@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS voice_profiles (
 ALTER TABLE voice_profiles ENABLE ROW LEVEL SECURITY;
 
 -- Members of the org can read/write their own voice profile
-CREATE POLICY IF NOT EXISTS "voice_member_all" ON voice_profiles
+DROP POLICY IF EXISTS "voice_member_all" ON voice_profiles;
+CREATE POLICY "voice_member_all" ON voice_profiles
   FOR ALL USING (is_org_member(org_id));
 
 CREATE INDEX IF NOT EXISTS idx_voice_profiles_org_id ON voice_profiles(org_id);
@@ -37,5 +38,6 @@ CREATE INDEX IF NOT EXISTS idx_voice_profiles_org_id ON voice_profiles(org_id);
 -- ── orgs: allow owners to update onboarding fields via RLS ──
 -- (writes go through service-role API routes so RLS not strictly
 --  needed here, but good to be explicit)
-CREATE POLICY IF NOT EXISTS "orgs_update_owner" ON orgs
+DROP POLICY IF EXISTS "orgs_update_owner" ON orgs;
+CREATE POLICY "orgs_update_owner" ON orgs
   FOR UPDATE USING (is_org_owner(id));
