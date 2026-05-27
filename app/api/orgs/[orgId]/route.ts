@@ -30,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const update: {
     name?: string;
     onboarding_completed_at?: string | null;
+    auto_send_replies?: boolean;
   } = {};
 
   if ("name" in body && typeof body.name === "string") update.name = body.name;
@@ -38,6 +39,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       typeof body.onboarding_completed_at === "string"
         ? body.onboarding_completed_at
         : null;
+  }
+  if ("auto_send_replies" in body && typeof body.auto_send_replies === "boolean") {
+    update.auto_send_replies = body.auto_send_replies;
   }
 
   if (Object.keys(update).length === 0) {
@@ -49,7 +53,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .from("orgs")
     .update(update)
     .eq("id", params.orgId)
-    .select("id, slug, name, active_channel, onboarding_completed_at")
+    .select("id, slug, name, active_channel, onboarding_completed_at, auto_send_replies")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

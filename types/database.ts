@@ -14,6 +14,7 @@ export interface Database {
           active_channel: string;
           channel_config: Json;
           onboarding_completed_at: string | null;
+          auto_send_replies: boolean;
           created_at: string;
         };
         Insert: {
@@ -26,6 +27,7 @@ export interface Database {
           active_channel?: string;
           channel_config?: Json;
           onboarding_completed_at?: string | null;
+          auto_send_replies?: boolean;
           created_at?: string;
         };
         Update: {
@@ -38,6 +40,7 @@ export interface Database {
           active_channel?: string;
           channel_config?: Json;
           onboarding_completed_at?: string | null;
+          auto_send_replies?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -133,34 +136,49 @@ export interface Database {
         Row: {
           id: string;
           org_id: string;
+          channel: string;
+          external_id: string;
+          name: string | null;
+          avatar_url: string | null;
           score: number;
-          stage: "new" | "qualified" | "booked" | "paid" | "churned";
+          stage: "cold" | "warm" | "hot" | "qualified" | "booked" | "paid" | "churned";
           source: string;
           instagram_handle: string | null;
-          name: string | null;
           metadata: Json;
+          last_seen_at: string;
+          updated_at: string;
           created_at: string;
         };
         Insert: {
           id?: string;
           org_id: string;
+          channel?: string;
+          external_id?: string;
+          name?: string | null;
+          avatar_url?: string | null;
           score?: number;
-          stage?: "new" | "qualified" | "booked" | "paid" | "churned";
+          stage?: "cold" | "warm" | "hot" | "qualified" | "booked" | "paid" | "churned";
           source?: string;
           instagram_handle?: string | null;
-          name?: string | null;
           metadata?: Json;
+          last_seen_at?: string;
+          updated_at?: string;
           created_at?: string;
         };
         Update: {
           id?: string;
           org_id?: string;
+          channel?: string;
+          external_id?: string;
+          name?: string | null;
+          avatar_url?: string | null;
           score?: number;
-          stage?: "new" | "qualified" | "booked" | "paid" | "churned";
+          stage?: "cold" | "warm" | "hot" | "qualified" | "booked" | "paid" | "churned";
           source?: string;
           instagram_handle?: string | null;
-          name?: string | null;
           metadata?: Json;
+          last_seen_at?: string;
+          updated_at?: string;
           created_at?: string;
         };
         Relationships: [];
@@ -171,8 +189,8 @@ export interface Database {
           org_id: string;
           lead_id: string;
           channel_provider: string;
-          messages: Json;
           last_message_at: string | null;
+          last_message_preview: string | null;
           created_at: string;
         };
         Insert: {
@@ -180,8 +198,8 @@ export interface Database {
           org_id: string;
           lead_id: string;
           channel_provider?: string;
-          messages?: Json;
           last_message_at?: string | null;
+          last_message_preview?: string | null;
           created_at?: string;
         };
         Update: {
@@ -189,9 +207,105 @@ export interface Database {
           org_id?: string;
           lead_id?: string;
           channel_provider?: string;
-          messages?: Json;
           last_message_at?: string | null;
+          last_message_preview?: string | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      messages: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          org_id: string;
+          direction: "inbound" | "outbound";
+          content: string;
+          sent_at: string;
+          provider_message_id: string | null;
+          metadata: Json;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          org_id: string;
+          direction: "inbound" | "outbound";
+          content: string;
+          sent_at?: string;
+          provider_message_id?: string | null;
+          metadata?: Json;
+        };
+        Update: {
+          id?: string;
+          conversation_id?: string;
+          org_id?: string;
+          direction?: "inbound" | "outbound";
+          content?: string;
+          sent_at?: string;
+          provider_message_id?: string | null;
+          metadata?: Json;
+        };
+        Relationships: [];
+      };
+      ai_drafts: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          org_id: string;
+          message_id: string | null;
+          content: string;
+          status: "pending" | "approved" | "sent" | "rejected" | "edited";
+          edited_content: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          org_id: string;
+          message_id?: string | null;
+          content: string;
+          status?: "pending" | "approved" | "sent" | "rejected" | "edited";
+          edited_content?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          conversation_id?: string;
+          org_id?: string;
+          message_id?: string | null;
+          content?: string;
+          status?: "pending" | "approved" | "sent" | "rejected" | "edited";
+          edited_content?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      ai_usage: {
+        Row: {
+          id: string;
+          org_id: string;
+          month: string;
+          tokens_in: number;
+          tokens_out: number;
+          cost_inr: number;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          month: string;
+          tokens_in?: number;
+          tokens_out?: number;
+          cost_inr?: number;
+        };
+        Update: {
+          id?: string;
+          org_id?: string;
+          month?: string;
+          tokens_in?: number;
+          tokens_out?: number;
+          cost_inr?: number;
         };
         Relationships: [];
       };
@@ -349,37 +463,31 @@ export interface Database {
         Relationships: [];
       };
     };
-    Views: {
-      [_ in never]: never;
-    };
+    Views: { [_ in never]: never };
     Functions: {
-      is_org_member: {
-        Args: { check_org_id: string };
-        Returns: boolean;
-      };
-      is_org_owner: {
-        Args: { check_org_id: string };
-        Returns: boolean;
-      };
+      is_org_member: { Args: { check_org_id: string }; Returns: boolean };
+      is_org_owner:  { Args: { check_org_id: string }; Returns: boolean };
     };
-    Enums: {
-      [_ in never]: never;
-    };
-    CompositeTypes: {
-      [_ in never]: never;
-    };
+    Enums: { [_ in never]: never };
+    CompositeTypes: { [_ in never]: never };
   };
 }
 
-// Convenience row types
-export type Org = Database["public"]["Tables"]["orgs"]["Row"];
-export type OrgMember = Database["public"]["Tables"]["org_members"]["Row"];
-export type Integration = Database["public"]["Tables"]["integrations"]["Row"];
-export type VoiceProfile = Database["public"]["Tables"]["voice_profiles"]["Row"];
-export type Lead = Database["public"]["Tables"]["leads"]["Row"];
-export type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
-export type Booking = Database["public"]["Tables"]["bookings"]["Row"];
-export type Payment = Database["public"]["Tables"]["payments"]["Row"];
-export type Sequence = Database["public"]["Tables"]["sequences"]["Row"];
-export type MetricsDaily = Database["public"]["Tables"]["metrics_daily"]["Row"];
-export type OrgEvent = Database["public"]["Tables"]["events"]["Row"];
+// ── Convenience row types ──────────────────────────────────
+export type Org           = Database["public"]["Tables"]["orgs"]["Row"];
+export type OrgMember     = Database["public"]["Tables"]["org_members"]["Row"];
+export type Integration   = Database["public"]["Tables"]["integrations"]["Row"];
+export type VoiceProfile  = Database["public"]["Tables"]["voice_profiles"]["Row"];
+export type Lead          = Database["public"]["Tables"]["leads"]["Row"];
+export type Conversation  = Database["public"]["Tables"]["conversations"]["Row"];
+export type Message       = Database["public"]["Tables"]["messages"]["Row"];
+export type AiDraft       = Database["public"]["Tables"]["ai_drafts"]["Row"];
+export type AiUsage       = Database["public"]["Tables"]["ai_usage"]["Row"];
+export type Booking       = Database["public"]["Tables"]["bookings"]["Row"];
+export type Payment       = Database["public"]["Tables"]["payments"]["Row"];
+export type Sequence      = Database["public"]["Tables"]["sequences"]["Row"];
+export type MetricsDaily  = Database["public"]["Tables"]["metrics_daily"]["Row"];
+export type OrgEvent      = Database["public"]["Tables"]["events"]["Row"];
+
+// ── Lead stage ─────────────────────────────────────────────
+export type LeadStage = Lead["stage"];
