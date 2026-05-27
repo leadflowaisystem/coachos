@@ -12,6 +12,8 @@ export interface Database {
           ai_tokens_used: number;
           ai_cost_inr: number;
           active_channel: string;
+          channel_config: Json;
+          onboarding_completed_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -22,6 +24,8 @@ export interface Database {
           ai_tokens_used?: number;
           ai_cost_inr?: number;
           active_channel?: string;
+          channel_config?: Json;
+          onboarding_completed_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -32,6 +36,8 @@ export interface Database {
           ai_tokens_used?: number;
           ai_cost_inr?: number;
           active_channel?: string;
+          channel_config?: Json;
+          onboarding_completed_at?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -65,6 +71,7 @@ export interface Database {
           config: Json;
           active: boolean;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -73,6 +80,7 @@ export interface Database {
           config?: Json;
           active?: boolean;
           created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -81,6 +89,43 @@ export interface Database {
           config?: Json;
           active?: boolean;
           created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      voice_profiles: {
+        Row: {
+          id: string;
+          org_id: string;
+          tone: string;
+          offer: string;
+          price_range: string;
+          sells: string;
+          objections: Json;
+          extra_context: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          tone?: string;
+          offer?: string;
+          price_range?: string;
+          sells?: string;
+          objections?: Json;
+          extra_context?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          org_id?: string;
+          tone?: string;
+          offer?: string;
+          price_range?: string;
+          sells?: string;
+          objections?: Json;
+          extra_context?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -329,6 +374,8 @@ export interface Database {
 // Convenience row types
 export type Org = Database["public"]["Tables"]["orgs"]["Row"];
 export type OrgMember = Database["public"]["Tables"]["org_members"]["Row"];
+export type Integration = Database["public"]["Tables"]["integrations"]["Row"];
+export type VoiceProfile = Database["public"]["Tables"]["voice_profiles"]["Row"];
 export type Lead = Database["public"]["Tables"]["leads"]["Row"];
 export type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
 export type Booking = Database["public"]["Tables"]["bookings"]["Row"];

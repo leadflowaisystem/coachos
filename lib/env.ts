@@ -65,6 +65,11 @@ export const env = {
     return get("INNGEST_SIGNING_KEY", "");
   },
 
+  // ── Encryption (for storing integration credentials) ─────────────────────────
+  get ENCRYPTION_KEY() {
+    return get("ENCRYPTION_KEY");
+  },
+
   // ── App ──────────────────────────────────────────────────────────────────────
   get NEXT_PUBLIC_APP_URL() {
     return get("NEXT_PUBLIC_APP_URL", "http://localhost:3000");

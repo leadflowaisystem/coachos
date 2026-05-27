@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { slugify } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function CreateOrgForm() {
   const router = useRouter();
@@ -14,9 +17,7 @@ export function CreateOrgForm() {
 
   function handleNameChange(val: string) {
     setName(val);
-    if (!slugEdited) {
-      setSlug(slugify(val));
-    }
+    if (!slugEdited) setSlug(slugify(val));
   }
 
   function handleSlugChange(val: string) {
@@ -43,16 +44,15 @@ export function CreateOrgForm() {
       return;
     }
 
-    router.push(`/org/${data.org.slug}`);
+    // Redirect into the onboarding wizard (not the dashboard)
+    router.push(`/org/${data.org.slug}/onboarding`);
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1">
-        <label htmlFor="org-name" className="text-sm font-medium">
-          Workspace name
-        </label>
-        <input
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-1.5">
+        <Label htmlFor="org-name">Workspace name</Label>
+        <Input
           id="org-name"
           type="text"
           required
@@ -60,16 +60,13 @@ export function CreateOrgForm() {
           value={name}
           onChange={(e) => handleNameChange(e.target.value)}
           placeholder="My Coaching Business"
-          className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
 
-      <div className="space-y-1">
-        <label htmlFor="org-slug" className="text-sm font-medium">
-          URL slug
-        </label>
-        <div className="flex items-center rounded-md border overflow-hidden focus-within:ring-2 focus-within:ring-ring">
-          <span className="bg-muted px-3 py-2 text-sm text-muted-foreground border-r select-none">
+      <div className="space-y-1.5">
+        <Label htmlFor="org-slug">URL slug</Label>
+        <div className="flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] overflow-hidden focus-within:ring-2 focus-within:ring-[var(--brand)] focus-within:border-[var(--brand)] transition-colors">
+          <span className="bg-[var(--bg-3)] px-3 py-2 text-xs text-[var(--text-3)] border-r border-[var(--border)] select-none whitespace-nowrap">
             coachos.app/org/
           </span>
           <input
@@ -80,20 +77,30 @@ export function CreateOrgForm() {
             onChange={(e) => handleSlugChange(e.target.value)}
             placeholder="my-coaching-biz"
             pattern="[a-z0-9-]+"
-            className="flex-1 bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none"
+            className="flex-1 bg-transparent px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-3)] focus:outline-none"
           />
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="text-sm text-[var(--danger)]">{error}</p>
+      )}
 
-      <button
+      <Button
         type="submit"
+        variant="primary"
+        className="w-full"
         disabled={loading || !name || !slug}
-        className="w-full rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
       >
-        {loading ? "Creating..." : "Create workspace"}
-      </button>
+        {loading ? (
+          <>
+            <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+            Creating…
+          </>
+        ) : (
+          "Create workspace →"
+        )}
+      </Button>
     </form>
   );
 }

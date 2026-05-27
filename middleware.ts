@@ -2,7 +2,13 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  // Forward the pathname so Server Component layouts can read it via headers().
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+
+  let supabaseResponse = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,7 +20,9 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = NextResponse.next({
+            request: { headers: requestHeaders },
+          });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
@@ -34,6 +42,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/api/inngest") ||
+    pathname.startsWith("/styleguide") ||
     pathname.startsWith("/_next") ||
     pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico|css|js)$/);
 
@@ -50,6 +59,9 @@ export async function middleware(request: NextRequest) {
     homeUrl.searchParams.delete("next");
     return NextResponse.redirect(homeUrl);
   }
+
+  // Propagate x-pathname to the response headers too
+  supabaseResponse.headers.set("x-pathname", pathname);
 
   return supabaseResponse;
 }
