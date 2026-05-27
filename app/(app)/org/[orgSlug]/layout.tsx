@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { headers } from "next/headers";
-import { Zap } from "lucide-react";
-import { OrgSwitcher } from "@/components/org/org-switcher";
+import { AppShell } from "@/components/layout/app-shell";
 
 interface Props {
   children: React.ReactNode;
@@ -68,28 +67,23 @@ export default async function OrgLayout({ children, params }: Props) {
   const orgs =
     (allOrgsData as { id: string; slug: string; name: string }[] | null) ?? [];
 
+  // Onboarding wizard uses fixed overlay — render children bare
+  if (isOnboardingPath) {
+    return (
+      <div className="min-h-screen bg-[var(--bg)]">
+        {children}
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[var(--bg)]">
-      {/* ── Topbar — only shown when NOT on the onboarding wizard ── */}
-      {!isOnboardingPath && (
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-4 border-b border-[var(--border)] bg-[var(--bg-1)] px-5">
-          <div className="flex items-center gap-2 shrink-0">
-            <Zap className="h-4 w-4 text-[var(--brand)]" />
-            <span className="font-display text-sm font-semibold text-[var(--text)]">
-              CoachOS
-            </span>
-          </div>
-          <OrgSwitcher orgs={orgs} currentSlug={params.orgSlug} />
-          <div className="ml-auto text-xs text-[var(--text-3)] truncate max-w-[200px]">
-            {user.email}
-          </div>
-        </header>
-      )}
-      {isOnboardingPath ? (
-        children
-      ) : (
-        <main className="p-6">{children}</main>
-      )}
-    </div>
+    <AppShell
+      orgSlug={params.orgSlug}
+      orgName={org.name}
+      orgs={orgs}
+      user={{ email: user.email ?? undefined }}
+    >
+      {children}
+    </AppShell>
   );
 }
