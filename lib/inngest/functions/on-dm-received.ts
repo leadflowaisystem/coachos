@@ -3,16 +3,19 @@
  *
  * Fires whenever a new inbound DM is created.
  * Steps:
- *   1. load-context     — fetch messages, voice profile, org, lead
+ *   1. load-context     — fetch messages, voice profile, org, lead, Cal.com link
  *   2. qualify-lead     — score 0-100, derive stage cold/warm/hot
  *   3. update-lead      — persist score + stage
  *   4. draft-reply      — if warm/hot: generate reply in org voice
- *   5. save-or-send     — auto-send (if org.auto_send_replies) or queue as pending draft
+ *                         (hot replies embed the Cal.com booking link)
+ *   5. save-or-send     — auto-send (if org.auto_send_replies) or queue as pending draft;
+ *                         hot leads that get auto-sent are promoted to 'booking_sent'
  */
 
 import { inngest } from "../client";
 import { createServiceClient } from "@/lib/supabase/server";
 import { qualifyLead, draftReply } from "@/lib/ai";
+import { getCalLink, embedMetadataInCalLink } from "@/lib/booking";
 
 interface DmReceivedData {
   orgId:          string;
@@ -36,7 +39,7 @@ export const onDmReceived = inngest.createFunction(
     const ctx = await step.run("load-context", async () => {
       const svc = createServiceClient();
 
-      const [orgRes, leadRes, msgRes, voiceRes] = await Promise.all([
+      const [orgRes, leadRes, msgRes, voiceRes, calLinkRes] = await Promise.all([
         svc.from("orgs")
            .select("id, auto_send_replies, active_channel")
            .eq("id", orgId)
@@ -53,6 +56,7 @@ export const onDmReceived = inngest.createFunction(
            .select("tone, offer, price_range, sells, objections, extra_context")
            .eq("org_id", orgId)
            .single(),
+        getCalLink(orgId),
       ]);
 
       return {
@@ -65,6 +69,7 @@ export const onDmReceived = inngest.createFunction(
           tone: string; offer: string; price_range: string;
           sells: string; objections: string[]; extra_context: string;
         } | null,
+        calLink: calLinkRes as string | null,
       };
     });
 
@@ -95,6 +100,12 @@ export const onDmReceived = inngest.createFunction(
 
     // ── 4 + 5. Draft + save/send (warm or hot only) ────────────
     if (qualification.stage === "hot" || qualification.stage === "warm") {
+      // For hot leads: embed conversation metadata in the Cal.com link so the
+      // webhook can match the booking back to this conversation.
+      const calLinkForDraft = qualification.stage === "hot" && ctx.calLink
+        ? embedMetadataInCalLink(ctx.calLink, conversationId, leadId)
+        : null;
+
       const draft = await step.run("draft-reply", async () => {
         return draftReply({
           messages:     ctx.messages,
@@ -102,6 +113,7 @@ export const onDmReceived = inngest.createFunction(
           score:        qualification.score,
           stage:        qualification.stage,
           orgId,
+          calLink:      calLinkForDraft,
         });
       });
 
@@ -132,6 +144,14 @@ export const onDmReceived = inngest.createFunction(
             last_message_at:      now,
             last_message_preview: `[AI] ${draft.content.slice(0, 78)}`,
           }).eq("id", conversationId);
+
+          // Hot leads that received an auto-sent booking reply → booking_sent
+          if (qualification.stage === "hot" && calLinkForDraft) {
+            await svc.from("leads").update({
+              stage:      "booking_sent",
+              updated_at: now,
+            }).eq("id", leadId);
+          }
         } else {
           // Queue for human approval
           await svc.from("ai_drafts").insert({

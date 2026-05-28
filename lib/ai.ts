@@ -137,6 +137,7 @@ export async function draftReply(params: {
   score:        number;
   stage:        string;
   orgId:        string;
+  calLink?:     string | null;
 }): Promise<DraftResult> {
   if (!process.env.LLM_API_KEY) {
     console.warn("[ai] LLM_API_KEY not set — skipping draft.");
@@ -148,6 +149,7 @@ export async function draftReply(params: {
     voiceProfile: params.voiceProfile,
     score:        params.score,
     stage:        params.stage,
+    calLink:      params.calLink,
   });
 
   const response = await client.chat.completions.create({

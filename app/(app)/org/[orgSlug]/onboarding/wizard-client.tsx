@@ -28,6 +28,7 @@ interface WizardData {
   channel:         ChannelId;
   manychatApiKey:  string;
   calApiKey:       string;
+  calBookingUrl:   string;
   calEnabled:      boolean;
   razorpayKeyId:   string;
   razorpaySecret:  string;
@@ -89,6 +90,7 @@ export function WizardClient({ orgId, orgSlug, orgName, userEmail }: Props) {
     channel:         "manual",
     manychatApiKey:  "",
     calApiKey:       "",
+    calBookingUrl:   "",
     calEnabled:      false,
     razorpayKeyId:   "",
     razorpaySecret:  "",
@@ -177,7 +179,10 @@ export function WizardClient({ orgId, orgSlug, orgName, userEmail }: Props) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               provider: "calcom",
-              config: { api_key: d.calApiKey.trim() },
+              config: {
+                api_key:     d.calApiKey.trim(),
+                booking_url: d.calBookingUrl.trim(),
+              },
               active: true,
             }),
           });
@@ -528,19 +533,33 @@ function StepCalcom({ data, set }: { data: WizardData; set: SetFn }) {
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
-            className="space-y-1.5 overflow-hidden"
+            className="space-y-3 overflow-hidden"
           >
-            <Label htmlFor="cal-key">Cal.com API Key</Label>
-            <Input
-              id="cal-key"
-              type="password"
-              value={data.calApiKey}
-              onChange={(e) => set("calApiKey", e.target.value)}
-              placeholder="cal_live_..."
-            />
-            <p className="text-[11px] text-[var(--text-3)]">
-              Find it at cal.com/settings/developer/api-keys
-            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="cal-key">Cal.com API Key</Label>
+              <Input
+                id="cal-key"
+                type="password"
+                value={data.calApiKey}
+                onChange={(e) => set("calApiKey", e.target.value)}
+                placeholder="cal_live_..."
+              />
+              <p className="text-[11px] text-[var(--text-3)]">
+                Find it at cal.com/settings/developer/api-keys
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cal-booking-url">Booking Page URL</Label>
+              <Input
+                id="cal-booking-url"
+                value={data.calBookingUrl}
+                onChange={(e) => set("calBookingUrl", e.target.value)}
+                placeholder="https://cal.com/yourname/30min"
+              />
+              <p className="text-[11px] text-[var(--text-3)]">
+                The link CoachOS will include in hot-lead replies
+              </p>
+            </div>
           </motion.div>
         )}
       </div>

@@ -20,7 +20,7 @@ type Provider = typeof ALLOWED_PROVIDERS[number];
 
 /** Fields that contain secrets and must be encrypted. */
 const SECRET_FIELDS: Record<Provider, string[]> = {
-  calcom:    ["api_key"],
+  calcom:    ["api_key", "webhook_secret"],
   razorpay:  ["key_secret"],
   manychat:  ["api_key"],
   meta:      ["page_access_token", "app_secret"],

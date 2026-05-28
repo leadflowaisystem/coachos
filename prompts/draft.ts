@@ -14,8 +14,10 @@ export interface DraftInput {
     objections: string[];
     extra_context: string;
   } | null;
-  score: number;
-  stage: string;
+  score:   number;
+  stage:   string;
+  /** Cal.com booking URL to embed in hot-lead replies. */
+  calLink?: string | null;
 }
 
 export function buildDraftPrompt(input: DraftInput): {
@@ -39,10 +41,14 @@ export function buildDraftPrompt(input: DraftInput): {
 
   lines.push(``);
   lines.push(`LEAD SIGNAL`);
+  const hotInstruction = input.calLink
+    ? `High intent — invite them to book a discovery call. Share this link naturally: ${input.calLink}`
+    : "High intent — nudge toward booking a discovery call.";
+
   lines.push(
     `Score: ${input.score}/100 (${input.stage}). ${
       input.stage === "hot"
-        ? "High intent — nudge toward booking a discovery call."
+        ? hotInstruction
         : "Warming up — keep them engaged, don't rush the sale."
     }`
   );
