@@ -326,18 +326,19 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   // ── 3. Seed 30 days of metrics_daily ────────────────────────
   // Re-query all inserted data to compute realistic daily metrics
-  const [allLeads, allPayments, allBookings, allSeqRuns, allConvs] = await Promise.all([
-    // leads: metadata col exists — safe to use contains
+  // leads: metadata col exists — reliable metadata-based filter
+  // payments/bookings/seqruns have no metadata col — filter by inserted lead IDs
+  // NOTE: We intentionally do NOT re-query conversations here.
+  //       speed/AI metrics are derived from leads_ directly (1 lead = 1 conv in seed)
+  //       which avoids a second point-of-failure on FK-cascade timing.
+  const [allLeads, allPayments, allBookings, allSeqRuns] = await Promise.all([
     svc.from("leads").select("id, score, stage, source, created_at, last_seen_at")
       .eq("org_id", orgId).contains("metadata", { seed: true }),
-    // payments/bookings/convs have no metadata col — filter by inserted lead IDs
     svc.from("payments").select("id, amount_inr, status, lead_id, updated_at")
       .eq("org_id", orgId).in("lead_id", insertedLeadIds),
     svc.from("bookings").select("id, status, lead_id, created_at, updated_at")
       .eq("org_id", orgId).in("lead_id", insertedLeadIds),
     svc.from("sequence_runs").select("id, type, status, lead_id")
-      .eq("org_id", orgId).in("lead_id", insertedLeadIds),
-    svc.from("conversations").select("id, lead_id, created_at")
       .eq("org_id", orgId).in("lead_id", insertedLeadIds),
   ]);
 
@@ -345,13 +346,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
   type PayR    = { id: string; amount_inr: number; status: string; lead_id: string; updated_at: string };
   type BookR   = { id: string; status: string; lead_id: string; created_at: string; updated_at: string };
   type SeqR    = { id: string; type: string; status: string; lead_id: string };
-  type ConvR   = { id: string; lead_id: string; created_at: string };
 
   const leads_   = (allLeads.data   ?? []) as LeadR[];
   const pays_    = (allPayments.data ?? []) as PayR[];
   const books_   = (allBookings.data ?? []) as BookR[];
   const seqs_    = (allSeqRuns.data  ?? []) as SeqR[];
-  const convs_   = (allConvs.data    ?? []) as ConvR[];
 
   const dunnLeads   = new Set(seqs_.filter((s) => s.type === "dunning").map((s) => s.lead_id));
   const revLeads    = new Set(seqs_.filter((s) => s.type === "ghost_revival").map((s) => s.lead_id));
@@ -374,7 +373,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return t >= dayStartMs && t <= dayEndMs;
     };
 
-    const dayConvs   = convs_.filter((c) => inRange(c.created_at));
+    // dayLeads drives DMs-received, speed, and AI metrics (1 lead = 1 conv in seed)
+    const dayLeads   = leads_.filter((l) => inRange(l.created_at));
     const dayQual    = leads_.filter((l) => inRange(l.created_at) && l.score >= 50);
     const dayBooked  = books_.filter((b) => inRange(b.created_at) && b.status === "confirmed");
     const dayShowed  = books_.filter((b) => inRange(b.updated_at) && b.status === "completed");
@@ -407,20 +407,20 @@ export async function POST(_req: NextRequest, { params }: Params) {
     metricRows.push({
       org_id:              orgId,
       date:                dateStr,
-      dms_received:        dayConvs.length,
+      dms_received:        dayLeads.length,
       leads_qualified:     dayQual.length,
       leads_booked:        dayBooked.length,
       leads_showed:        dayShowed.length,
-      leads_paid:          dayPaid.length,
+      leads_paid:          new Set(dayPaid.map((p) => p.lead_id)).size,
       revenue_paid_inr:    revenuePaid,
       revenue_dunning_inr: dunnInr,
       revenue_revival_inr: revInr,
       revenue_noshow_inr:  noshowInr,
       pipeline_inr:        pipelineInr,
-      speed_sum_ms:        dayConvs.reduce((s, c) => s + (replyDelaysByLeadId.get(c.lead_id) ?? rnd(5, 30) * 60000), 0),
-      speed_count:         dayConvs.length,
-      messages_ai:         dayConvs.length * rnd(2, 5),
-      tokens_used:         dayConvs.length * rnd(800, 2000),
+      speed_sum_ms:        dayLeads.reduce((s, l) => s + (replyDelaysByLeadId.get(l.id) ?? rnd(5, 30) * 60000), 0),
+      speed_count:         dayLeads.length,
+      messages_ai:         dayLeads.length * rnd(2, 5),
+      tokens_used:         dayLeads.length * rnd(800, 2000),
       source_breakdown:    srcMap,
     });
   }

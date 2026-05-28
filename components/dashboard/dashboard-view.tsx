@@ -57,6 +57,7 @@ function formatMs(ms: number): string {
 
 function convPct(a: number, b: number): string {
   if (b === 0) return "–";
+  if (a > b)   return "–";   // suppress ratios > 100% — revival leads bypass booking steps
   return `${Math.round((a / b) * 100)}%`;
 }
 
@@ -266,9 +267,11 @@ export function DashboardView({ initialData, orgId, isDev }: Props) {
               </p>
             </div>
             <div>
-              <p className="text-[11px] text-[var(--text-3)]">Booked → Paid</p>
+              <p className="text-[11px] text-[var(--text-3)]">
+                Showed → Paid
+              </p>
               <p className="font-mono text-lg font-semibold text-[var(--text)]">
-                {convPct(funnel.paid, funnel.booked)}
+                {convPct(funnel.paid, funnel.showed)}
               </p>
             </div>
           </div>

@@ -90,7 +90,12 @@ export default async function PaymentsPage({ params }: Props) {
       lead_name:  p.lead?.name ?? null,
     }));
 
-  const totalPaid    = payments.filter((p) => p.status === "paid").length;
+  // Count unique leads who have at least one captured payment — same definition as dashboard hero.
+  const totalPaid = new Set(
+    payments
+      .filter((p) => p.status === "paid" && p.lead)
+      .map((p) => p.lead!.id)
+  ).size;
   const totalPending = payments.filter((p) => p.status === "pending").length;
 
   const isDev = process.env.NODE_ENV !== "production";

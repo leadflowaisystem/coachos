@@ -16,7 +16,8 @@ interface FunnelChartProps {
 
 function pct(a: number, b: number): string {
   if (b === 0) return "–";
-  return `${Math.min(100, Math.round((a / b) * 100))}%`;
+  if (a > b)   return "–";   // revival/direct-pay leads can exceed prior step — suppress misleading >100%
+  return `${Math.round((a / b) * 100)}%`;
 }
 
 export function FunnelChart({ steps }: FunnelChartProps) {
@@ -37,8 +38,9 @@ export function FunnelChart({ steps }: FunnelChartProps) {
                 {i > 0 && (
                   <span className={cn(
                     "font-mono text-[11px]",
-                    parseInt(conv) >= 70 ? "text-[var(--brand)]"  :
-                    parseInt(conv) >= 40 ? "text-amber-400"       : "text-red-400"
+                    conv === "–"          ? "text-[var(--text-3)]" :
+                    parseInt(conv) >= 70  ? "text-[var(--brand)]"  :
+                    parseInt(conv) >= 40  ? "text-amber-400"       : "text-red-400"
                   )}>
                     {conv}
                   </span>
