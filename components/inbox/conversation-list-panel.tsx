@@ -31,7 +31,7 @@ export function ConversationListPanel({ orgSlug, conversations, onNewDm }: Props
     : conversations;
 
   return (
-    <div className="flex w-[300px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-1)]">
+    <div className="flex flex-1 flex-col overflow-hidden bg-[var(--bg-1)]">
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-4">
         <span className="font-display text-sm font-semibold text-[var(--text)]">

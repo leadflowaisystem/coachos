@@ -124,6 +124,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
   const shuffledNames = [...NAMES].sort(() => Math.random() - 0.5);
   const inserted: { leads: number; bookings: number; payments: number; sequences: number } =
     { leads: 0, bookings: 0, payments: 0, sequences: 0 };
+  const insertedLeadIds: string[]        = [];
+  const replyDelaysByLeadId = new Map<string, number>();
 
   for (let i = 0; i < Math.min(stageDistribution.length, totalLeads); i++) {
     const spec    = stageDistribution[i];
@@ -154,6 +156,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (!leadRow) continue;
     const leadId = (leadRow as { id: string }).id;
     inserted.leads++;
+    insertedLeadIds.push(leadId);
 
     // Insert conversation + messages
     const { data: convRow } = await svc.from("conversations").insert({
@@ -169,6 +172,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     if (convId) {
       const replyDelay = rnd(2, 45) * 60 * 1000; // 2–45 min speed-to-lead
+      replyDelaysByLeadId.set(leadId, replyDelay);
       await svc.from("messages").insert([
         {
           conversation_id: convId,
@@ -271,16 +275,18 @@ export async function POST(_req: NextRequest, { params }: Params) {
   // ── 3. Seed 30 days of metrics_daily ────────────────────────
   // Re-query all inserted data to compute realistic daily metrics
   const [allLeads, allPayments, allBookings, allSeqRuns, allConvs] = await Promise.all([
+    // leads: metadata col exists — safe to use contains
     svc.from("leads").select("id, score, stage, source, created_at, last_seen_at")
       .eq("org_id", orgId).contains("metadata", { seed: true }),
+    // payments/bookings/convs have no metadata col — filter by inserted lead IDs
     svc.from("payments").select("id, amount_inr, status, lead_id, updated_at")
-      .eq("org_id", orgId).contains("metadata", { seed: true }),
+      .eq("org_id", orgId).in("lead_id", insertedLeadIds),
     svc.from("bookings").select("id, status, lead_id, created_at, updated_at")
-      .eq("org_id", orgId).contains("metadata", { seed: true }),
+      .eq("org_id", orgId).in("lead_id", insertedLeadIds),
     svc.from("sequence_runs").select("id, type, status, lead_id")
-      .eq("org_id", orgId).contains("metadata", { seed: true }),
+      .eq("org_id", orgId).in("lead_id", insertedLeadIds),
     svc.from("conversations").select("id, lead_id, created_at")
-      .eq("org_id", orgId).contains("metadata", { seed: true }),
+      .eq("org_id", orgId).in("lead_id", insertedLeadIds),
   ]);
 
   type LeadR   = { id: string; score: number; stage: string; source: string | null; created_at: string };
@@ -352,10 +358,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
       revenue_revival_inr: revInr,
       revenue_noshow_inr:  noshowInr,
       pipeline_inr:        pipelineInr,
-      speed_sum_ms:        dayConvs.length * rnd(3, 35) * 60000,
+      speed_sum_ms:        dayConvs.reduce((s, c) => s + (replyDelaysByLeadId.get(c.lead_id) ?? rnd(5, 30) * 60000), 0),
       speed_count:         dayConvs.length,
-      messages_ai:         dayConvs.length * rnd(1, 3),
-      tokens_used:         dayConvs.length * rnd(300, 900),
+      messages_ai:         dayConvs.length * rnd(2, 5),
+      tokens_used:         dayConvs.length * rnd(800, 2000),
       source_breakdown:    srcMap,
     });
   }

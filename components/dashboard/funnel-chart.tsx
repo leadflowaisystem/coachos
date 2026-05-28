@@ -16,7 +16,7 @@ interface FunnelChartProps {
 
 function pct(a: number, b: number): string {
   if (b === 0) return "–";
-  return `${Math.round((a / b) * 100)}%`;
+  return `${Math.min(100, Math.round((a / b) * 100))}%`;
 }
 
 export function FunnelChart({ steps }: FunnelChartProps) {

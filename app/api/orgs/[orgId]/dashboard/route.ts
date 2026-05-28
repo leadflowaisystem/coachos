@@ -103,7 +103,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   // AI cost estimate (₹ 0.012 per 1k tokens — rough Groq/OpenAI rate)
   const aiCostInr = Math.round((totals.tokens_used / 1000) * 0.012 * 84); // ≈ ₹
 
-  const funnel = liveFallback
+  const rawFunnel = liveFallback
     ? liveFallback.funnel
     : {
         dms:       totals.dms_received,
@@ -112,6 +112,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         showed:    totals.leads_showed,
         paid:      totals.leads_paid,
       };
+  const funnel = clampFunnel(rawFunnel);
 
   return NextResponse.json({
     funnel,
@@ -166,6 +167,16 @@ interface LiveFallback {
   speed_ms: number | null;
 }
 
+// ── Funnel clamper — guarantees monotone decrease ────────────
+function clampFunnel(f: { dms: number; qualified: number; booked: number; showed: number; paid: number }) {
+  const dms       = f.dms;
+  const qualified = Math.min(f.qualified, dms);
+  const booked    = Math.min(f.booked,    qualified);
+  const showed    = Math.min(f.showed,    booked);
+  const paid      = Math.min(f.paid,      showed);
+  return { dms, qualified, booked, showed, paid };
+}
+
 // ── Live fallback (used when no metrics_daily rows exist) ────
 
 async function computeLive(
@@ -215,13 +226,13 @@ async function computeLive(
   }
 
   return {
-    funnel: {
+    funnel: clampFunnel({
       dms:       convR.count  ?? 0,
       qualified: qualR.count  ?? 0,
       booked:    bookedR.count ?? 0,
       showed:    showedR.count ?? 0,
       paid:      paidRows.length,
-    },
+    }),
     revenue_paid:    totalPaid,
     revenue_dunning: dunning,
     revenue_revival: revival,

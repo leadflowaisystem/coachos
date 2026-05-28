@@ -59,7 +59,10 @@ export function InboxShell({
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
       {/* ── Left panel ────────────────────────────── */}
-      <div className={cn("flex flex-col shrink-0", inThread ? "hidden md:flex" : "flex")}>
+      <div className={cn(
+        "flex w-[300px] shrink-0 flex-col overflow-hidden border-r border-[var(--border)]",
+        inThread ? "hidden md:flex" : "flex"
+      )}>
         {/* Mini toolbar above list — auto-send toggle + usage */}
         <div className="flex h-9 shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--bg-1)] px-3">
           <div className="flex items-center gap-1.5">

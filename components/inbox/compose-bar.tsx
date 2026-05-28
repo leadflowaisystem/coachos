@@ -60,7 +60,7 @@ export function ComposeBar({ orgId, convId, onSent, disabled }: Props) {
 
   return (
     <div className={cn(
-      "flex items-end gap-2 border-t border-[var(--border)] bg-[var(--bg-1)] px-4 py-3",
+      "flex shrink-0 items-end gap-2 border-t border-[var(--border)] bg-[var(--bg-1)] px-4 py-3",
       disabled && "opacity-50 pointer-events-none"
     )}>
       <Textarea
