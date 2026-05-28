@@ -26,6 +26,46 @@ const NAMES = [
   "Swati Saxena","Rohit Bansal","Geeta Sharma","Praveen Kumar","Asha Menon",
 ];
 
+// Stage-appropriate inbound messages so AI scoring looks coherent on a demo
+const INBOUND_BY_INTENT: Record<"hot" | "warm" | "cold", string[]> = {
+  hot: [
+    "Can we get on a call this week? I'm ready to start.",
+    "How much is your 1:1 coaching program? I want to join.",
+    "I've been following you for months — when's your next intake?",
+    "Ready to invest. What's the next step to work with you?",
+    "I need help transforming my fitness. What does your program look like?",
+    "Bhai please reply, I really want to sign up 🙏",
+    "What's the fastest way to get started with you?",
+  ],
+  warm: [
+    "What exactly is included in your program?",
+    "How long is the program and what's the time commitment per week?",
+    "Do you work with people who are just starting out?",
+    "I saw your reel about meal planning — can you explain more?",
+    "What results have your clients typically seen in 3 months?",
+    "Is there an EMI option? What are the payment terms?",
+    "Do you do group coaching or only 1:1?",
+  ],
+  cold: [
+    "Love your content! 🔥",
+    "Your reels are so good omg",
+    "Hi! Followed you from @pooja's story",
+    "Great post! Keep it up 💪",
+    "Heyyy 👋",
+    "Inspiring content as always!",
+    "Can you share more about your journey?",
+  ],
+};
+
+function getInboundMsg(stage: string): string {
+  const intent: "hot" | "warm" | "cold" =
+    (stage === "hot" || stage === "won" || stage === "paid")      ? "hot"  :
+    (stage === "warm" || stage === "qualified" || stage === "booked" || stage === "booking_sent") ? "warm" :
+    "cold";
+  const pool = INBOUND_BY_INTENT[intent];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 export async function POST(_req: NextRequest, { params }: Params) {
   if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "Not available in production" }, { status: 403 });
@@ -158,13 +198,16 @@ export async function POST(_req: NextRequest, { params }: Params) {
     inserted.leads++;
     insertedLeadIds.push(leadId);
 
+    // Stage-appropriate inbound message (drives realistic AI scoring)
+    const inboundMsg = getInboundMsg(spec.stage);
+
     // Insert conversation + messages
     const { data: convRow } = await svc.from("conversations").insert({
       org_id:               orgId,
       lead_id:              leadId,
       channel_provider:     channel,
       last_message_at:      lastSeen,
-      last_message_preview: "Hey, I'm interested in your coaching program",
+      last_message_preview: inboundMsg,
       created_at:           leadCreatedAt,
     }).select("id").single();
 
@@ -173,22 +216,31 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (convId) {
       const replyDelay = rnd(2, 45) * 60 * 1000; // 2–45 min speed-to-lead
       replyDelaysByLeadId.set(leadId, replyDelay);
+      const outboundReplies: Record<"hot" | "warm" | "cold", string> = {
+        hot:  "Hey! So glad you reached out 🙏 Let's hop on a quick call — here's my calendar link.",
+        warm: "Great question! Here's a breakdown of what's included and how it works…",
+        cold: "Thank you so much! 😊 Feel free to DM me anytime if you have questions.",
+      };
+      const intent: "hot" | "warm" | "cold" =
+        (spec.stage === "hot" || spec.stage === "won" || spec.stage === "paid") ? "hot" :
+        (spec.stage === "warm" || spec.stage === "qualified" || spec.stage === "booked") ? "warm" :
+        "cold";
       await svc.from("messages").insert([
         {
           conversation_id: convId,
-          org_id: orgId,
-          direction: "inbound" as const,
-          content: "Hey, I'm interested in your coaching program! Can you tell me more?",
-          sent_at: leadCreatedAt,
-          metadata: { seed: true } as unknown as Json,
+          org_id:          orgId,
+          direction:       "inbound" as const,
+          content:         inboundMsg,
+          sent_at:         leadCreatedAt,
+          metadata:        { seed: true } as unknown as Json,
         },
         {
           conversation_id: convId,
-          org_id: orgId,
-          direction: "outbound" as const,
-          content: "Hi! I'd love to help you. Let me share what we offer...",
-          sent_at: new Date(new Date(leadCreatedAt).getTime() + replyDelay).toISOString(),
-          metadata: { seed: true, reply_delay_ms: replyDelay } as unknown as Json,
+          org_id:          orgId,
+          direction:       "outbound" as const,
+          content:         outboundReplies[intent],
+          sent_at:         new Date(new Date(leadCreatedAt).getTime() + replyDelay).toISOString(),
+          metadata:        { seed: true, reply_delay_ms: replyDelay, source: "ai" } as unknown as Json,
         },
       ]);
     }
@@ -313,7 +365,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const dayStart  = `${dateStr}T00:00:00.000Z`;
     const dayEnd    = `${dateStr}T23:59:59.999Z`;
 
-    const inRange = (iso: string) => iso >= dayStart && iso <= dayEnd;
+    // Use numeric comparison — robust regardless of Supabase timestamp format
+    // (+00:00 vs Z vs missing timezone) which would break lexicographic comparison.
+    const dayStartMs = new Date(dayStart).getTime();
+    const dayEndMs   = new Date(dayEnd).getTime();
+    const inRange = (iso: string) => {
+      const t = new Date(iso).getTime();
+      return t >= dayStartMs && t <= dayEndMs;
+    };
 
     const dayConvs   = convs_.filter((c) => inRange(c.created_at));
     const dayQual    = leads_.filter((l) => inRange(l.created_at) && l.score >= 50);

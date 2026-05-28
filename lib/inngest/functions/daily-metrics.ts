@@ -123,7 +123,8 @@ async function aggregateOrg(
       .eq("status", "no_show"),
   ]);
 
-  const paidRows   = (paidRes.data ?? []) as { id: string; amount_inr: number; lead_id: string }[];
+  const paidRows    = (paidRes.data ?? []) as { id: string; amount_inr: number; lead_id: string }[];
+  // De-duplicate: count unique leads who paid today, not payment row count
   const paidLeadIds = new Set(paidRows.map((r) => r.lead_id));
 
   // Attribution: check sequence_runs for paid leads
@@ -196,7 +197,7 @@ async function aggregateOrg(
     leads_qualified:    qualRes.count ?? 0,
     leads_booked:       bookedRes.count ?? 0,
     leads_showed:       showedRes.count ?? 0,
-    leads_paid:         paidRows.length,
+    leads_paid:         paidLeadIds.size, // unique leads, not payment event count
     revenue_paid_inr:   totalPaidInr,
     revenue_dunning_inr: dunningInr,
     revenue_revival_inr: revivalInr,

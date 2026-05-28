@@ -100,8 +100,13 @@ export async function GET(req: NextRequest, { params }: Params) {
     paid:          r.leads_paid,
   }));
 
+  // When using the live fallback, messages_ai comes from the fallback query;
+  // when using metrics_daily, it comes from aggregated totals.
+  const messagesAi = liveFallback?.messages_ai ?? totals.messages_ai;
+  const tokensUsed = totals.tokens_used; // only available in metrics_daily
+
   // AI cost estimate (₹ 0.012 per 1k tokens — rough Groq/OpenAI rate)
-  const aiCostInr = Math.round((totals.tokens_used / 1000) * 0.012 * 84); // ≈ ₹
+  const aiCostInr = Math.round((tokensUsed / 1000) * 0.012 * 84);
 
   const rawFunnel = liveFallback
     ? liveFallback.funnel
@@ -110,9 +115,29 @@ export async function GET(req: NextRequest, { params }: Params) {
         qualified: totals.leads_qualified,
         booked:    totals.leads_booked,
         showed:    totals.leads_showed,
+        // Use unique lead count from metrics_daily — each day's leads_paid
+        // counts unique paying leads for that day, summing gives total distinct payers
         paid:      totals.leads_paid,
       };
   const funnel = clampFunnel(rawFunnel);
+
+  // ── Dev parity assertion ─────────────────────────────────────
+  // Warns when dashboard funnel.paid diverges from the raw payments table
+  // by more than 1 (off-by-one is acceptable due to range boundaries).
+  if (process.env.NODE_ENV !== "production") {
+    const { count: rawPaidCount } = await svc
+      .from("payments")
+      .select("lead_id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .eq("status", "paid")
+      .gte("updated_at", `${since}T00:00:00.000Z`);
+    if (rawPaidCount !== null && Math.abs(rawPaidCount - funnel.paid) > 1) {
+      console.warn(
+        `[dashboard/parity] funnel.paid=${funnel.paid} vs raw payments.paid=${rawPaidCount}` +
+        ` for last ${days}d. Source: ${liveFallback ? "live" : "metrics_daily"}`
+      );
+    }
+  }
 
   return NextResponse.json({
     funnel,
@@ -123,10 +148,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       noshow:   liveFallback?.revenue_noshow  ?? totals.revenue_noshow,
       pipeline: pipelineInr,
     },
-    speed_ms:  liveFallback?.speed_ms  ?? speedMs,
+    speed_ms: liveFallback?.speed_ms ?? speedMs,
     ai: {
-      messages:  totals.messages_ai,
-      tokens:    totals.tokens_used,
+      messages:  messagesAi,
+      tokens:    tokensUsed,
       cost_inr:  aiCostInr,
     },
     sources,
@@ -165,15 +190,20 @@ interface LiveFallback {
   revenue_noshow: number;
   pipeline_inr: number;
   speed_ms: number | null;
+  messages_ai: number;
 }
 
-// ── Funnel clamper — guarantees monotone decrease ────────────
+// ── Funnel clamper ───────────────────────────────────────────
+// Clamps dms→qualified→booked→showed to be monotone-decreasing.
+// `paid` is intentionally NOT clamped by `showed` — revival leads
+// and direct-pay leads close a deal without ever having a completed
+// booking, so paid can legitimately exceed showed.
 function clampFunnel(f: { dms: number; qualified: number; booked: number; showed: number; paid: number }) {
   const dms       = f.dms;
   const qualified = Math.min(f.qualified, dms);
   const booked    = Math.min(f.booked,    qualified);
   const showed    = Math.min(f.showed,    booked);
-  const paid      = Math.min(f.paid,      showed);
+  const paid      = f.paid; // NOT clamped by showed
   return { dms, qualified, booked, showed, paid };
 }
 
@@ -187,7 +217,7 @@ async function computeLive(
 ): Promise<LiveFallback> {
   const since = new Date(Date.now() - days * 86400000).toISOString();
 
-  const [convR, qualR, bookedR, showedR, paidR, pipeR, noshowR, dunnR, revR] =
+  const [convR, qualR, bookedR, showedR, paidR, pipeR, noshowR, dunnR, revR, outboundR] =
     await Promise.all([
       svc.from("conversations").select("id", { count: "exact", head: true })
         .eq("org_id", orgId).gte("created_at", since),
@@ -197,6 +227,7 @@ async function computeLive(
         .eq("org_id", orgId).eq("status", "confirmed").gte("created_at", since),
       svc.from("bookings").select("id", { count: "exact", head: true })
         .eq("org_id", orgId).eq("status", "completed").gte("updated_at", since),
+      // Select full rows so we can count unique leads and sum amounts
       svc.from("payments").select("id, amount_inr, lead_id")
         .eq("org_id", orgId).eq("status", "paid").gte("updated_at", since),
       svc.from("payments").select("amount_inr")
@@ -207,6 +238,9 @@ async function computeLive(
         .eq("org_id", orgId).eq("type", "dunning"),
       svc.from("sequence_runs").select("lead_id")
         .eq("org_id", orgId).eq("type", "ghost_revival"),
+      // AI messages sent in range (for live-fallback AI panel)
+      svc.from("messages").select("id", { count: "exact", head: true })
+        .eq("org_id", orgId).eq("direction", "outbound").gte("sent_at", since),
     ]);
 
   const paidRows  = (paidR.data ?? []) as { amount_inr: number; lead_id: string }[];
@@ -225,13 +259,16 @@ async function computeLive(
     if (noshowLeads.has(p.lead_id)) noshow  += p.amount_inr;
   }
 
+  // Count UNIQUE leads who paid (not payment events — one lead may have multiple payments)
+  const uniquePaidLeads = new Set(paidRows.map((r) => r.lead_id)).size;
+
   return {
     funnel: clampFunnel({
-      dms:       convR.count  ?? 0,
-      qualified: qualR.count  ?? 0,
+      dms:       convR.count   ?? 0,
+      qualified: qualR.count   ?? 0,
       booked:    bookedR.count ?? 0,
       showed:    showedR.count ?? 0,
-      paid:      paidRows.length,
+      paid:      uniquePaidLeads,
     }),
     revenue_paid:    totalPaid,
     revenue_dunning: dunning,
@@ -239,5 +276,6 @@ async function computeLive(
     revenue_noshow:  noshow,
     pipeline_inr:    pipeline,
     speed_ms:        null,
+    messages_ai:     outboundR.count ?? 0,
   };
 }

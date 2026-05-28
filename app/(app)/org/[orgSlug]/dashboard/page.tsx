@@ -12,7 +12,7 @@ function clampFunnel(f: { dms: number; qualified: number; booked: number; showed
   const qualified = Math.min(f.qualified, dms);
   const booked    = Math.min(f.booked,    qualified);
   const showed    = Math.min(f.showed,    booked);
-  const paid      = Math.min(f.paid,      showed);
+  const paid      = f.paid; // NOT clamped by showed — revival/direct-pay leads bypass booking
   return { dms, qualified, booked, showed, paid };
 }
 
@@ -123,11 +123,12 @@ export default async function DashboardPage({ params }: Props) {
 
     dashData = {
       funnel: clampFunnel({
-        dms:       convR.count  ?? 0,
-        qualified: qualR.count  ?? 0,
+        dms:       convR.count   ?? 0,
+        qualified: qualR.count   ?? 0,
         booked:    bookedR.count ?? 0,
         showed:    showedR.count ?? 0,
-        paid:      paidRows.length,
+        // Unique leads who paid — de-duplicate in case a lead has multiple payment rows
+        paid:      new Set(paidRows.map((p) => p.lead_id)).size,
       }),
       revenue: {
         paid:     totalPaid,

@@ -49,7 +49,9 @@ export default async function ConversationPage({ params }: Props) {
        .limit(1).maybeSingle(),
   ]);
 
-  if (!convRes.data) notFound();
+  // Conversation not found or no longer belongs to this org (e.g. deleted by re-seed).
+  // Redirect gracefully rather than showing a hard 404.
+  if (!convRes.data) redirect(`/org/${params.orgSlug}/inbox`);
 
   const leadRaw = (convRes.data.lead as unknown) as {
     id: string; name: string | null; external_id: string; channel: string;
