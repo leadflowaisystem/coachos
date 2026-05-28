@@ -75,15 +75,20 @@ export async function qualifyLead(params: {
   const { system, user } = buildQualifyPrompt({
     messages: params.messages,
     voiceProfile: params.voiceProfile
-      ? { tone: params.voiceProfile.tone, offer: params.voiceProfile.offer,
-          sells: params.voiceProfile.sells, objections: params.voiceProfile.objections }
+      ? {
+          tone:        params.voiceProfile.tone,
+          offer:       params.voiceProfile.offer,
+          price_range: params.voiceProfile.price_range,
+          sells:       params.voiceProfile.sells,
+          objections:  params.voiceProfile.objections,
+        }
       : null,
   });
 
   const response = await client.chat.completions.create({
     model:           MODEL_FAST,
-    max_tokens:      220,
-    temperature:     0.1,
+    max_tokens:      120,          // label response is short
+    temperature:     0.0,          // deterministic scoring
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: system },
@@ -92,17 +97,30 @@ export async function qualifyLead(params: {
   });
 
   const raw = response.choices[0]?.message?.content ?? "{}";
-  let parsed: { score?: unknown; reasoning?: unknown } = {};
+  let parsed: { score?: unknown; stage?: unknown; reasoning?: unknown } = {};
   try { parsed = JSON.parse(raw); } catch { /* fallback to defaults */ }
 
-  const score    = Math.max(0, Math.min(100, Number(parsed.score ?? 20)));
-  const stage: AiLeadStage = score >= 70 ? "hot" : score >= 30 ? "warm" : "cold";
+  // Model returns score/stage as "hot" | "warm" | "cold" labels
+  const VALID_STAGES: AiLeadStage[] = ["hot", "warm", "cold"];
+  const rawStage = (
+    typeof parsed.stage === "string" ? parsed.stage :
+    typeof parsed.score === "string" ? parsed.score : "cold"
+  ).toLowerCase().trim() as string;
+
+  const stage: AiLeadStage = VALID_STAGES.includes(rawStage as AiLeadStage)
+    ? (rawStage as AiLeadStage)
+    : "cold";
+
+  // Map label → representative numeric score for draft prompt context + UI
+  const SCORE_MAP: Record<AiLeadStage, number> = { hot: 85, warm: 50, cold: 15 };
+  const score = SCORE_MAP[stage];
+
   const tokensIn  = response.usage?.prompt_tokens     ?? 0;
   const tokensOut = response.usage?.completion_tokens ?? 0;
   const p = priceFor(MODEL_FAST);
   const costInr = tokensIn * p.in + tokensOut * p.out;
 
-  console.log(`[ai:qualify] score=${score} stage=${stage} tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
+  console.log(`[ai:qualify] stage=${stage} score=${score} tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
   await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
 
   return {
