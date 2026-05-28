@@ -77,6 +77,20 @@ export const onDmReceived = inngest.createFunction(
       return { skipped: true, reason: "Missing context" };
     }
 
+    // ── 1b. Stop any active ghost-revival sequences for this lead ──
+    await step.run("stop-revival-sequences", async () => {
+      const svc = createServiceClient();
+      const now = new Date().toISOString();
+      await svc.from("sequence_runs").update({
+        status:     "stopped",
+        stopped_at: now,
+        updated_at: now,
+      }).eq("org_id", orgId)
+        .eq("lead_id", leadId)
+        .eq("type", "ghost_revival")
+        .eq("status", "active");
+    });
+
     // ── 2. Qualify ──────────────────────────────────────────────
     const qualification = await step.run("qualify-lead", async () => {
       return qualifyLead({

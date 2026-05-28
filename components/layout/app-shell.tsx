@@ -14,6 +14,7 @@ import {
   Bell,
   Zap,
   Activity,
+  GitBranch,
   LogOut,
   Mic,
   Check,
@@ -55,6 +56,7 @@ const mainNav = [
   { href: "inbox",     label: "Inbox",     icon: Inbox          },
   { href: "bookings",  label: "Bookings",  icon: CalendarDays   },
   { href: "payments",  label: "Payments",  icon: CreditCard     },
+  { href: "sequences", label: "Sequences", icon: GitBranch      },
   { href: "dashboard", label: "Dashboard", icon: LayoutDashboard },
 ] as const;
 

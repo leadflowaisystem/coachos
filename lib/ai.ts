@@ -11,7 +11,8 @@
 
 import OpenAI from "openai";
 import { buildQualifyPrompt } from "@/prompts/qualify";
-import { buildDraftPrompt } from "@/prompts/draft";
+import { buildDraftPrompt }   from "@/prompts/draft";
+import { buildRevivalPrompt } from "@/prompts/revival";
 import { createServiceClient } from "@/lib/supabase/server";
 
 // ── Client ──────────────────────────────────────────────────────
@@ -169,6 +170,65 @@ export async function draftReply(params: {
   const costInr = tokensIn * p.in + tokensOut * p.out;
 
   console.log(`[ai:draft] tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
+  await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
+
+  return { content, tokensIn, tokensOut, costInr };
+}
+
+// ── generateRevivalNudge ─────────────────────────────────────
+export interface RevivalResult {
+  content:   string;
+  tokensIn:  number;
+  tokensOut: number;
+  costInr:   number;
+}
+
+type VoiceProf4 = {
+  tone: string; offer: string; sells: string;
+  objections: string[]; extra_context: string;
+} | null;
+
+export async function generateRevivalNudge(params: {
+  messages:     { direction: "inbound" | "outbound"; content: string }[];
+  voiceProfile: VoiceProf4;
+  inactiveDays: number;
+  attempt:      1 | 2 | 3;
+  orgId:        string;
+  calLink?:     string | null;
+}): Promise<RevivalResult> {
+  if (!process.env.LLM_API_KEY) {
+    console.warn("[ai] LLM_API_KEY not set — skipping revival nudge.");
+    return {
+      content:   "Hey! It's been a while — just wanted to check in and see how things are going. Are you still interested in connecting?",
+      tokensIn: 0, tokensOut: 0, costInr: 0,
+    };
+  }
+
+  const { system, user } = buildRevivalPrompt({
+    messages:     params.messages,
+    voiceProfile: params.voiceProfile,
+    inactiveDays: params.inactiveDays,
+    attempt:      params.attempt,
+    calLink:      params.calLink,
+  });
+
+  const response = await client.chat.completions.create({
+    model:       MODEL_SMART,
+    max_tokens:  200,
+    temperature: 0.85,
+    messages: [
+      { role: "system", content: system },
+      { role: "user",   content: user   },
+    ],
+  });
+
+  const content   = response.choices[0]?.message?.content?.trim() ?? "…";
+  const tokensIn  = response.usage?.prompt_tokens     ?? 0;
+  const tokensOut = response.usage?.completion_tokens ?? 0;
+  const p = priceFor(MODEL_SMART);
+  const costInr = tokensIn * p.in + tokensOut * p.out;
+
+  console.log(`[ai:revival] attempt=${params.attempt} tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
   await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
 
   return { content, tokensIn, tokensOut, costInr };
