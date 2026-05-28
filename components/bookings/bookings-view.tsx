@@ -8,12 +8,17 @@ import {
   Clock, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { BookingCard, type BookingRow } from "./booking-card";
+import { SimulateBookingSheet, type SimulateLead } from "./simulate-booking-sheet";
 import { cn } from "@/lib/utils";
 
 interface Props {
   initialBookings: BookingRow[];
   orgSlug:         string;
   orgId:           string;
+  /** True in non-production environments — shows the Simulate booking button. */
+  isDev:           boolean;
+  /** Leads available for the simulate form picker. Only used when isDev=true. */
+  leads:           SimulateLead[];
 }
 
 type Group = {
@@ -117,7 +122,7 @@ function SectionHeader({
   );
 }
 
-export function BookingsView({ initialBookings, orgSlug, orgId }: Props) {
+export function BookingsView({ initialBookings, orgSlug, orgId, isDev, leads }: Props) {
   const router = useRouter();
   const [bookings, setBookings] = useState<BookingRow[]>(initialBookings);
   const [open, setOpen] = useState<Record<string, boolean>>({ upcoming: true, "no-shows": true });
@@ -133,17 +138,32 @@ export function BookingsView({ initialBookings, orgSlug, orgId }: Props) {
 
   const groups = groupBookings(bookings);
 
+  // Dev bar — shown in both empty and populated states
+  const devBar = isDev && (
+    <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-dashed border-amber-500/20 bg-amber-500/5 px-3 py-2 max-w-2xl">
+      <span className="text-[11px] text-amber-500/70 font-mono uppercase tracking-wide mr-1">
+        dev
+      </span>
+      <SimulateBookingSheet orgId={orgId} leads={leads} onDone={handleUpdate} />
+    </div>
+  );
+
   if (groups.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--bg-3)]">
-          <CalendarDays className="h-7 w-7 text-[var(--text-3)]" />
-        </div>
-        <div className="space-y-1 max-w-xs">
-          <p className="font-display text-base font-semibold text-[var(--text)]">No bookings yet</p>
-          <p className="text-sm text-[var(--text-3)] leading-relaxed">
-            Bookings appear here after a hot lead clicks your Cal.com link and confirms a call.
-          </p>
+      <div className="space-y-4">
+        {devBar}
+        <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--bg-3)]">
+            <CalendarDays className="h-7 w-7 text-[var(--text-3)]" />
+          </div>
+          <div className="space-y-1 max-w-xs">
+            <p className="font-display text-base font-semibold text-[var(--text)]">No bookings yet</p>
+            <p className="text-sm text-[var(--text-3)] leading-relaxed">
+              {isDev
+                ? "Use the Simulate button above to create a test booking and watch reminders fire."
+                : "Bookings appear here after a hot lead clicks your Cal.com link and confirms a call."}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -151,6 +171,7 @@ export function BookingsView({ initialBookings, orgSlug, orgId }: Props) {
 
   return (
     <div className="space-y-6 max-w-2xl">
+      {devBar}
       {groups.map((group) => {
         const isOpen = open[group.key] !== false;
         return (
