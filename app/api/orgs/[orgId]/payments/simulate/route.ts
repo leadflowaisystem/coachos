@@ -102,31 +102,19 @@ export async function POST(req: NextRequest, { params }: Params) {
       const pid = (payment as { id: string }).id;
       console.log(`[simulate/payment] payment created: ${pid}`);
 
-      // Send a message to the conversation if one exists
-      if (conversationId) {
-        currentStep = "insert_message";
-        console.log("[simulate/payment] step: insert_message");
-        await svc.from("messages").insert({
-          conversation_id: conversationId,
-          org_id:          orgId,
-          direction:       "outbound",
-          content:         `[Simulated] Payment link for ${description ?? "the program"} — ₹${amountInr.toLocaleString("en-IN")}:\n${fakeUrl}`,
-          sent_at:         now,
-          metadata:        { source: "simulate" },
-        });
-        await svc.from("conversations").update({
-          last_message_at:      now,
-          last_message_preview: `Payment link — ₹${amountInr.toLocaleString("en-IN")}`,
-        }).eq("id", conversationId);
-      }
-
       currentStep = "inngest_send";
-      console.log("[simulate/payment] step: inngest_send  event=payment.created");
-      await inngest.send({
-        name: "payment.created",
-        data: { orgId, paymentId: pid, leadId, conversationId },
-      });
-      console.log("[simulate/payment] ✓ payment.created emitted");
+      console.log("[simulate/payment] step: inngest_send  events=payment.created + payment.link-message");
+      await inngest.send([
+        {
+          name: "payment.created",
+          data: { orgId, paymentId: pid, leadId, conversationId },
+        },
+        {
+          name: "payment.link-message",
+          data: { orgId, paymentId: pid, description: description ?? null },
+        },
+      ]);
+      console.log("[simulate/payment] ✓ payment.created + payment.link-message emitted");
 
       return NextResponse.json({ ok: true, paymentId: pid, conversationId });
     }

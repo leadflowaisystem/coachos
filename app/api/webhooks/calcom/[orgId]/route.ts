@@ -197,18 +197,27 @@ export async function POST(req: NextRequest, { params }: Params) {
       updated_at: now,
     }).eq("id", leadId);
 
-    // Emit Inngest event to kick off reminder pipeline
+    // Emit Inngest events — reminders pipeline + immediate confirmation message
     if (booking?.id) {
-      await inngest.send({
-        name: "booking.created",
-        data: {
-          orgId,
-          bookingId:      booking.id,
-          leadId,
-          conversationId,
-          startsAt:       startTime ?? now,
+      await inngest.send([
+        {
+          name: "booking.created",
+          data: {
+            orgId,
+            bookingId:      booking.id,
+            leadId,
+            conversationId,
+            startsAt:       startTime ?? now,
+          },
         },
-      });
+        {
+          name: "booking.confirm-message",
+          data: {
+            orgId,
+            bookingId: booking.id,
+          },
+        },
+      ]);
     }
 
     return NextResponse.json({ ok: true, bookingId: booking?.id });

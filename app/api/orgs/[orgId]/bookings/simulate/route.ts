@@ -139,20 +139,20 @@ export async function POST(req: NextRequest, { params }: Params) {
       console.warn("[simulate/booking] update_lead_stage warning:", stageErr.message);
     }
 
-    // ── Emit exactly the same event the real Cal.com webhook emits ─
+    // ── Emit events — reminders pipeline + immediate confirmation ──
     currentStep = "inngest_send";
-    console.log("[simulate/booking] step: inngest_send  event=booking.created");
-    await inngest.send({
-      name: "booking.created",
-      data: {
-        orgId,
-        bookingId,
-        leadId,
-        conversationId,
-        startsAt,
+    console.log("[simulate/booking] step: inngest_send  events=booking.created + booking.confirm-message");
+    await inngest.send([
+      {
+        name: "booking.created",
+        data: { orgId, bookingId, leadId, conversationId, startsAt },
       },
-    });
-    console.log("[simulate/booking] ✓ booking.created emitted");
+      {
+        name: "booking.confirm-message",
+        data: { orgId, bookingId },
+      },
+    ]);
+    console.log("[simulate/booking] ✓ booking.created + booking.confirm-message emitted");
 
     return NextResponse.json({ ok: true, bookingId, conversationId });
 

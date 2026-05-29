@@ -10,9 +10,11 @@
  */
 
 import OpenAI from "openai";
-import { buildQualifyPrompt } from "@/prompts/qualify";
-import { buildDraftPrompt }   from "@/prompts/draft";
-import { buildRevivalPrompt } from "@/prompts/revival";
+import { buildQualifyPrompt }        from "@/prompts/qualify";
+import { buildDraftPrompt }          from "@/prompts/draft";
+import { buildRevivalPrompt }        from "@/prompts/revival";
+import { buildBookingConfirmPrompt } from "@/prompts/booking-confirm";
+import { buildPaymentLinkPrompt }    from "@/prompts/payment-link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { isTrialExpired, getPlanLimits } from "@/lib/plan";
 
@@ -299,6 +301,116 @@ export async function generateRevivalNudge(params: {
   const costInr = tokensIn * p.in + tokensOut * p.out;
 
   console.log(`[ai:revival] attempt=${params.attempt} tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
+  await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
+
+  return { content, tokensIn, tokensOut, costInr };
+}
+
+// ── generateBookingConfirmMessage ─────────────────────────────────
+/**
+ * Generates a short (~35 word) booking confirmation message.
+ * Includes the meeting URL verbatim when provided.
+ * Uses the LLM_API_KEY; falls back to a template when the key is absent.
+ */
+export async function generateBookingConfirmMessage(params: {
+  leadFirstName:        string;
+  meetingTimeFormatted: string;
+  meetingUrl:           string | null;
+  voiceProfile:         VoiceProf;
+  orgId:                string;
+}): Promise<DraftResult> {
+  if (!process.env.LLM_API_KEY) {
+    const urlPart = params.meetingUrl ? ` ${params.meetingUrl}.` : " The meeting link will be sent shortly.";
+    const name    = params.leadFirstName ? `, ${params.leadFirstName}` : "";
+    return {
+      content:   `Done${name}. ${params.meetingTimeFormatted} is locked in.${urlPart} Talk soon.`,
+      tokensIn:  0, tokensOut: 0, costInr: 0,
+    };
+  }
+
+  await assertAiNotBlocked(params.orgId);
+
+  const { system, user } = buildBookingConfirmPrompt({
+    leadFirstName:        params.leadFirstName,
+    meetingTimeFormatted: params.meetingTimeFormatted,
+    meetingUrl:           params.meetingUrl,
+    coachTone:            params.voiceProfile?.tone  ?? "",
+    coachOffer:           params.voiceProfile?.offer ?? "",
+  });
+
+  const response = await client.chat.completions.create({
+    model:       MODEL_SMART,
+    max_tokens:  100,
+    temperature: 0.75,
+    messages: [
+      { role: "system", content: system },
+      { role: "user",   content: user   },
+    ],
+  });
+
+  const content   = response.choices[0]?.message?.content?.trim() ?? "…";
+  const tokensIn  = response.usage?.prompt_tokens     ?? 0;
+  const tokensOut = response.usage?.completion_tokens ?? 0;
+  const p         = priceFor(MODEL_SMART);
+  const costInr   = tokensIn * p.in + tokensOut * p.out;
+
+  console.log(`[ai:booking-confirm] tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
+  await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
+
+  return { content, tokensIn, tokensOut, costInr };
+}
+
+// ── generatePaymentLinkMessage ─────────────────────────────────────
+/**
+ * Generates a short (~35 word) message to accompany a payment link.
+ * The payment URL MUST appear verbatim in the output.
+ * Falls back to a template when LLM_API_KEY is absent.
+ */
+export async function generatePaymentLinkMessage(params: {
+  leadFirstName: string;
+  amountInr:     number;
+  description:   string;
+  paymentUrl:    string;
+  voiceProfile:  VoiceProf;
+  orgId:         string;
+}): Promise<DraftResult> {
+  if (!process.env.LLM_API_KEY) {
+    const name   = params.leadFirstName ? `, ${params.leadFirstName}` : "";
+    const amount = `₹${params.amountInr.toLocaleString("en-IN")}`;
+    return {
+      content:   `Here you go${name}. ${amount} for ${params.description}: ${params.paymentUrl} Takes 30 seconds.`,
+      tokensIn:  0, tokensOut: 0, costInr: 0,
+    };
+  }
+
+  await assertAiNotBlocked(params.orgId);
+
+  const { system, user } = buildPaymentLinkPrompt({
+    leadFirstName: params.leadFirstName,
+    amountInr:     params.amountInr,
+    description:   params.description,
+    paymentUrl:    params.paymentUrl,
+    coachTone:     params.voiceProfile?.tone  ?? "",
+    coachOffer:    params.voiceProfile?.offer ?? "",
+  });
+
+  const response = await client.chat.completions.create({
+    model:       MODEL_SMART,
+    max_tokens:  100,
+    temperature: 0.75,
+    messages: [
+      { role: "system", content: system },
+      { role: "user",   content: user   },
+    ],
+  });
+
+  const content   = response.choices[0]?.message?.content?.trim() ?? "…";
+  const tokensIn  = response.usage?.prompt_tokens     ?? 0;
+  const tokensOut = response.usage?.completion_tokens ?? 0;
+  const p         = priceFor(MODEL_SMART);
+  const costInr   = tokensIn * p.in + tokensOut * p.out;
+
+  console.log(`[ai:payment-link] tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
   await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
 
   return { content, tokensIn, tokensOut, costInr };
