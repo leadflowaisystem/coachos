@@ -21,14 +21,15 @@ function pct(a: number, b: number): string {
 }
 
 export function FunnelChart({ steps }: FunnelChartProps) {
-  const max = Math.max(...steps.map((s) => s.value), 1);
+  // DMs (first step) is always 100% wide; every other bar is proportional to it.
+  const dmsCount = Math.max(steps[0]?.value ?? 1, 1);
 
   return (
     <div className="space-y-2.5">
       {steps.map((step, i) => {
         const prev  = i > 0 ? steps[i - 1].value : step.value;
         const conv  = i > 0 ? pct(step.value, prev) : "100%";
-        const width = Math.max((step.value / max) * 100, step.value > 0 ? 4 : 0);
+        const width = Math.max((step.value / dmsCount) * 100, step.value > 0 ? 4 : 0);
 
         return (
           <div key={step.label} className="space-y-1">

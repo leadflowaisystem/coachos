@@ -41,28 +41,36 @@ type ApiData = {
 
 export function ThreadPage({ orgId, convId, orgSlug }: Props) {
   const router = useRouter();
-  const [data,    setData]    = React.useState<ApiData | null>(null);
-  const [status,  setStatus]  = React.useState<"loading" | "ok" | "gone" | "error">("loading");
+  const [data,       setData]       = React.useState<ApiData | null>(null);
+  const [status,     setStatus]     = React.useState<"loading" | "ok" | "gone" | "error">("loading");
+  const [retryCount, setRetryCount] = React.useState(0);
 
   React.useEffect(() => {
     let cancelled = false;
 
-    // Reset on conv change so skeleton re-shows while fetching
+    // Reset on conv change (or retry) so skeleton re-shows while fetching
     setData(null);
     setStatus("loading");
 
     fetch(`/api/orgs/${orgId}/conversations/${convId}`)
       .then(async (res) => {
         if (cancelled) return;
-        if (res.status === 404) { setStatus("gone");  return; }
-        if (!res.ok)            { setStatus("error"); return; }
+        if (res.status === 404) { setStatus("gone"); return; }
+        if (!res.ok) {
+          console.error(`[ThreadPage] fetch failed: status=${res.status} convId=${convId}`);
+          setStatus("error");
+          return;
+        }
         const json: ApiData = await res.json();
         if (!cancelled) { setData(json); setStatus("ok"); }
       })
-      .catch(() => { if (!cancelled) setStatus("error"); });
+      .catch((err) => {
+        console.error(`[ThreadPage] fetch error: convId=${convId}`, err);
+        if (!cancelled) setStatus("error");
+      });
 
     return () => { cancelled = true; };
-  }, [orgId, convId]);
+  }, [orgId, convId, retryCount]);
 
   // Redirect gracefully when conv is gone (deleted by re-seed)
   React.useEffect(() => {
@@ -74,8 +82,14 @@ export function ThreadPage({ orgId, convId, orgSlug }: Props) {
 
   if (status === "error") {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3">
         <p className="text-sm text-[var(--text-3)]">Could not load conversation.</p>
+        <button
+          onClick={() => { setStatus("loading"); setRetryCount((c) => c + 1); }}
+          className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-2)] px-4 py-1.5 text-sm text-[var(--text-2)] transition-colors hover:bg-[var(--bg-3)]"
+        >
+          Retry
+        </button>
       </div>
     );
   }

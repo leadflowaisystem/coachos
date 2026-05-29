@@ -11,6 +11,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { qualifyLead, draftReply } from "@/lib/ai";
+import { getCalLink, embedMetadataInCalLink } from "@/lib/booking";
 import type { Json } from "@/types/database";
 
 interface Params { params: { orgId: string } }
@@ -161,6 +163,22 @@ export async function POST(_req: NextRequest, { params }: Params) {
     { stage: "warm", score: 45, hasBooking: false, hasPayment: false, hasDunning: false, hasRevival: true },
   ];
 
+  // ── Pre-fetch shared context for AI calls ──────────────────────
+  const voiceRes = await svc
+    .from("voice_profiles")
+    .select("tone, offer, price_range, sells, objections, extra_context")
+    .eq("org_id", orgId)
+    .single();
+  const voiceProfile = (voiceRes.data as {
+    tone: string; offer: string; price_range: string;
+    sells: string; objections: string[]; extra_context: string;
+  } | null);
+  const calLink = await getCalLink(orgId);
+
+  // Cap total AI calls (qualifyLead + draftReply count as 1 each)
+  const AI_CALL_LIMIT = 30;
+  let aiCallsUsed = 0;
+
   const shuffledNames = [...NAMES].sort(() => Math.random() - 0.5);
   const inserted: { leads: number; bookings: number; payments: number; sequences: number } =
     { leads: 0, bookings: 0, payments: 0, sequences: 0 };
@@ -216,33 +234,90 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (convId) {
       const replyDelay = rnd(2, 45) * 60 * 1000; // 2–45 min speed-to-lead
       replyDelaysByLeadId.set(leadId, replyDelay);
-      const outboundReplies: Record<"hot" | "warm" | "cold", string> = {
-        hot:  "Hey! So glad you reached out 🙏 Let's hop on a quick call — here's my calendar link.",
-        warm: "Great question! Here's a breakdown of what's included and how it works…",
-        cold: "Thank you so much! 😊 Feel free to DM me anytime if you have questions.",
-      };
-      const intent: "hot" | "warm" | "cold" =
-        (spec.stage === "hot" || spec.stage === "won" || spec.stage === "paid") ? "hot" :
-        (spec.stage === "warm" || spec.stage === "qualified" || spec.stage === "booked") ? "warm" :
-        "cold";
-      await svc.from("messages").insert([
-        {
-          conversation_id: convId,
-          org_id:          orgId,
-          direction:       "inbound" as const,
-          content:         inboundMsg,
-          sent_at:         leadCreatedAt,
-          metadata:        { seed: true } as unknown as Json,
-        },
-        {
-          conversation_id: convId,
-          org_id:          orgId,
-          direction:       "outbound" as const,
-          content:         outboundReplies[intent],
-          sent_at:         new Date(new Date(leadCreatedAt).getTime() + replyDelay).toISOString(),
-          metadata:        { seed: true, reply_delay_ms: replyDelay, source: "ai" } as unknown as Json,
-        },
-      ]);
+
+      // Insert inbound message first so we have its ID for ai_drafts
+      const { data: inboundRow } = await svc.from("messages").insert({
+        conversation_id: convId,
+        org_id:          orgId,
+        direction:       "inbound" as const,
+        content:         inboundMsg,
+        sent_at:         leadCreatedAt,
+        metadata:        { seed: true } as unknown as Json,
+      }).select("id").single();
+      const inboundMsgId = inboundRow ? (inboundRow as { id: string }).id : null;
+
+      const convMessages = [{ direction: "inbound" as const, content: inboundMsg, sent_at: leadCreatedAt }];
+
+      if (aiCallsUsed < AI_CALL_LIMIT) {
+        // ── Run qualifyLead ──────────────────────────────────────
+        aiCallsUsed++;
+        try {
+          const qualify = await qualifyLead({ messages: convMessages, voiceProfile, orgId });
+
+          // Update lead score + stage from AI result
+          await svc.from("leads").update({
+            score:      qualify.score,
+            stage:      qualify.stage,
+            updated_at: leadCreatedAt,
+          }).eq("id", leadId);
+
+          // ── Run draftReply for warm / hot ─────────────────────
+          if ((qualify.stage === "warm" || qualify.stage === "hot") && aiCallsUsed < AI_CALL_LIMIT) {
+            aiCallsUsed++;
+            try {
+              const linkedCal = (qualify.stage === "hot" && calLink)
+                ? embedMetadataInCalLink(calLink, convId, leadId)
+                : null;
+
+              const draft = await draftReply({
+                messages:     convMessages,
+                voiceProfile,
+                score:        qualify.score,
+                stage:        qualify.stage,
+                orgId,
+                calLink:      linkedCal,
+              });
+
+              const replySentAt = new Date(new Date(leadCreatedAt).getTime() + replyDelay).toISOString();
+
+              if (qualify.stage === "hot") {
+                // Hot → simulate auto-sent: outbound message + ai_draft "sent"
+                await svc.from("messages").insert({
+                  conversation_id: convId,
+                  org_id:          orgId,
+                  direction:       "outbound" as const,
+                  content:         draft.content,
+                  sent_at:         replySentAt,
+                  metadata:        { seed: true, reply_delay_ms: replyDelay, source: "ai" } as unknown as Json,
+                });
+                await svc.from("ai_drafts").insert({
+                  conversation_id: convId,
+                  org_id:          orgId,
+                  message_id:      inboundMsgId,
+                  content:         draft.content,
+                  status:          "sent",
+                });
+              } else {
+                // Warm → pending draft card for human review
+                await svc.from("ai_drafts").insert({
+                  conversation_id: convId,
+                  org_id:          orgId,
+                  message_id:      inboundMsgId,
+                  content:         draft.content,
+                  status:          "pending",
+                });
+              }
+            } catch (draftErr) {
+              console.error("[seed] draftReply failed for lead", leadId, draftErr);
+              // Non-fatal — lead still exists with inbound message
+            }
+          }
+        } catch (qualErr) {
+          console.error("[seed] qualifyLead failed for lead", leadId, qualErr);
+          aiCallsUsed--; // refund the slot on failure
+        }
+      }
+      // If cap exceeded or cold: inbound message only, spec stage kept
     }
 
     // Booking
