@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
+import { rateLimit, getIp } from "@/lib/ratelimit";
 
 interface Params { params: { orgId: string } }
 
@@ -25,6 +26,9 @@ async function assertMember(orgId: string) {
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
+  const { allowed } = rateLimit(`simulate:${getIp(req)}`, { limit: 30 });
+  if (!allowed) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
+
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

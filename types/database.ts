@@ -8,7 +8,7 @@ export interface Database {
           id: string;
           slug: string;
           name: string;
-          plan: string;
+          plan: "trial" | "starter" | "growth" | "pro" | "cancelled";
           ai_tokens_used: number;
           ai_cost_inr: number;
           active_channel: string;
@@ -16,6 +16,15 @@ export interface Database {
           onboarding_completed_at: string | null;
           auto_send_replies: boolean;
           created_at: string;
+          trial_ends_at: string;
+          subscription_id: string | null;
+          subscription_status: string;
+          current_period_end: string | null;
+          monthly_ai_msg_count: number;
+          ai_msgs_reset_at: string;
+          agency_owner_id: string | null;
+          referral_code: string | null;
+          referred_by: string | null;
         };
         Insert: {
           id?: string;
@@ -29,6 +38,15 @@ export interface Database {
           onboarding_completed_at?: string | null;
           auto_send_replies?: boolean;
           created_at?: string;
+          trial_ends_at?: string;
+          subscription_id?: string | null;
+          subscription_status?: string;
+          current_period_end?: string | null;
+          monthly_ai_msg_count?: number;
+          ai_msgs_reset_at?: string;
+          agency_owner_id?: string | null;
+          referral_code?: string | null;
+          referred_by?: string | null;
         };
         Update: {
           id?: string;
@@ -41,6 +59,81 @@ export interface Database {
           channel_config?: Json;
           onboarding_completed_at?: string | null;
           auto_send_replies?: boolean;
+          created_at?: string;
+          trial_ends_at?: string;
+          subscription_id?: string | null;
+          subscription_status?: string;
+          current_period_end?: string | null;
+          monthly_ai_msg_count?: number;
+          ai_msgs_reset_at?: string;
+          agency_owner_id?: string | null;
+          referral_code?: string | null;
+          referred_by?: string | null;
+        };
+        Relationships: [];
+      };
+      waitlist: {
+        Row: {
+          id: string;
+          email: string;
+          source: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          source?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string;
+          source?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      audit_log: {
+        Row: {
+          id: string;
+          org_id: string | null;
+          user_id: string | null;
+          event: string;
+          payload: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id?: string | null;
+          user_id?: string | null;
+          event: string;
+          payload?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          org_id?: string | null;
+          user_id?: string | null;
+          event?: string;
+          payload?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      user_flags: {
+        Row: {
+          user_id: string;
+          is_agency: boolean;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          is_agency?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          is_agency?: boolean;
           created_at?: string;
         };
         Relationships: [];

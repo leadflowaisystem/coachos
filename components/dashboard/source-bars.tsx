@@ -15,6 +15,11 @@ function formatInr(n: number): string {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
+  instagram_reel:  "bg-violet-400",
+  instagram_story: "bg-[var(--brand)]",
+  instagram_post:  "bg-amber-400",
+  manual:          "bg-blue-400",
+  // legacy keys
   reel:       "bg-violet-400",
   bio_link:   "bg-[var(--brand)]",
   campaign_a: "bg-amber-400",

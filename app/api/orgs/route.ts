@@ -31,9 +31,13 @@ export async function POST(request: NextRequest) {
   // Use service role to bypass RLS — org + owner membership created atomically
   const service = createServiceClient();
 
+  // Generate referral code + handle ?ref= signup bonus
+  const referralCode = Math.random().toString(36).slice(2, 10).toUpperCase();
+  const referredBy = body.ref ? String(body.ref).toUpperCase().slice(0, 10) : null;
+
   const { data: org, error: orgError } = await service
     .from("orgs")
-    .insert({ name, slug })
+    .insert({ name, slug, referral_code: referralCode, ...(referredBy ? { referred_by: referredBy } : {}) })
     .select()
     .single();
 

@@ -17,7 +17,13 @@ import type { Json } from "@/types/database";
 
 interface Params { params: { orgId: string } }
 
-const SOURCES  = ["reel", "bio_link", "campaign_a", "referral", "organic"];
+// 40/25/25/10 distribution per spec
+const SOURCES = [
+  "instagram_reel", "instagram_reel", "instagram_reel", "instagram_reel",  // 4 × reel
+  "instagram_story","instagram_story","instagram_story",                     // 3 × story
+  "instagram_post", "instagram_post", "instagram_post",                     // 3 × post (maps to "campaign_a")
+  "manual",                                                                   // 1 × manual
+];
 const CHANNELS = ["instagram", "instagram", "instagram", "whatsapp"];
 const NAMES = [
   "Priya Sharma","Ankit Verma","Meera Nair","Rahul Gupta","Divya Patel",

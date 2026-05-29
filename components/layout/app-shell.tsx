@@ -18,6 +18,7 @@ import {
   LogOut,
   Mic,
   Check,
+  Gift,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -61,8 +62,10 @@ const mainNav = [
 ] as const;
 
 const bottomNav = [
-  { href: "health",   label: "Health",   icon: Activity  },
-  { href: "settings", label: "Settings", icon: Settings  },
+  { href: "referrals",        label: "Referrals", icon: Gift         },
+  { href: "health",           label: "Health",    icon: Activity     },
+  { href: "settings/billing", label: "Billing",   icon: CreditCard   },
+  { href: "settings",         label: "Settings",  icon: Settings     },
 ] as const;
 
 /* ────────────────────────────────────────────

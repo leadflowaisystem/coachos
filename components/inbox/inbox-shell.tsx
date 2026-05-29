@@ -11,6 +11,7 @@ import { NewDmSheet }                from "./new-dm-sheet";
 import { RemovedToast }              from "./removed-toast";
 import { formatInr }                 from "@/lib/time";
 import { cn }                        from "@/lib/utils";
+import { getInboxCache, setInboxCache } from "@/lib/inbox-cache";
 import type { InboxConversation }    from "@/types/inbox";
 
 interface Props {
@@ -28,7 +29,7 @@ export function InboxShell({
   orgId,
   orgName,
   autoSendReplies: initialAutoSend,
-  conversations,
+  conversations: serverConversations,
   monthCostInr,
   children,
 }: Props) {
@@ -36,6 +37,18 @@ export function InboxShell({
   const [dmOpen,     setDmOpen]     = React.useState(false);
   const [autoSend,   setAutoSend]   = React.useState(initialAutoSend);
   const [savingAuto, setSavingAuto] = React.useState(false);
+
+  // Show cached conversations instantly while server data loads in the background.
+  // On first mount the server prop is authoritative; we warm the cache from it.
+  const cached = React.useMemo(() => getInboxCache(orgId), [orgId]);
+  const [conversations, setConversations] = React.useState<InboxConversation[]>(
+    cached ?? serverConversations,
+  );
+  React.useEffect(() => {
+    // Sync server data into state + cache whenever the layout re-renders
+    setConversations(serverConversations);
+    setInboxCache(orgId, serverConversations);
+  }, [orgId, serverConversations]);
 
   // On mobile: hide list when inside a conversation
   const inThread = /\/inbox\/[^/]+/.test(pathname);

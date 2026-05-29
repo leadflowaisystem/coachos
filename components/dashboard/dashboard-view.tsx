@@ -369,7 +369,7 @@ export function DashboardView({ initialData, orgId, isDev }: Props) {
               </div>
               <div>
                 <p className="font-mono text-lg font-semibold tabular-nums text-[var(--text)]">
-                  {(ai.tokens / 1000).toFixed(0)}k
+                  {ai.tokens >= 1000 ? `${(ai.tokens / 1000).toFixed(1)}k` : ai.tokens.toString()}
                 </p>
                 <p className="text-[11px] text-[var(--text-3)]">tokens used</p>
               </div>
@@ -386,8 +386,8 @@ export function DashboardView({ initialData, orgId, isDev }: Props) {
                 <p className="text-[11px] text-[var(--text-3)]">ROI</p>
                 <p className="font-mono text-base font-semibold text-[var(--brand)]">
                   {ai.cost_inr > 0
-                    ? `${Math.round(revenue.paid / Math.max(ai.cost_inr, 1))}×`
-                    : "∞"}
+                    ? `${Math.min(Math.round(revenue.paid / Math.max(ai.cost_inr, 1)), 999)}×${Math.round(revenue.paid / Math.max(ai.cost_inr, 1)) >= 999 ? "+" : ""}`
+                    : "999×+"}
                 </p>
               </div>
             </div>
