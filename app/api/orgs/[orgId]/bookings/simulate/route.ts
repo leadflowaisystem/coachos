@@ -14,6 +14,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
+import { generateBookingConfirmMessage } from "@/lib/ai";
+import { getLeadFirstName, formatMeetingTime } from "@/lib/leads";
 
 interface Params { params: { orgId: string } }
 
@@ -139,20 +141,59 @@ export async function POST(req: NextRequest, { params }: Params) {
       console.warn("[simulate/booking] update_lead_stage warning:", stageErr.message);
     }
 
-    // ── Emit events — reminders pipeline + immediate confirmation ──
+    // ── Send booking confirmation message synchronously ──────────
+    // (Dev simulate: we bypass Inngest for the confirm message so it
+    //  appears immediately without needing the Inngest dev server)
+    if (conversationId) {
+      currentStep = "confirm_message";
+      console.log("[simulate/booking] step: confirm_message  conv=", conversationId);
+      try {
+        const [voiceRes] = await Promise.all([
+          svc.from("voice_profiles")
+             .select("tone, offer")
+             .eq("org_id", orgId)
+             .maybeSingle(),
+        ]);
+        const voice = voiceRes.data as { tone: string; offer: string } | null;
+        const lead  = leadRow as { id: string; name: string | null };
+
+        const result = await generateBookingConfirmMessage({
+          leadFirstName:        getLeadFirstName({ name: lead.name }),
+          meetingTimeFormatted: formatMeetingTime(startsAt),
+          meetingUrl:           null, // sim bookings have no URL
+          voiceProfile:         voice ? { tone: voice.tone, offer: voice.offer, price_range: "", sells: "", objections: [], extra_context: "" } : null,
+          orgId,
+        });
+
+        const now2 = new Date().toISOString();
+        await svc.from("messages").insert({
+          conversation_id: conversationId,
+          org_id:          orgId,
+          direction:       "outbound",
+          content:         result.content,
+          sent_at:         now2,
+          metadata:        { source: "booking_confirm" },
+        });
+        await svc.from("conversations").update({
+          last_message_at:      now2,
+          last_message_preview: result.content.slice(0, 80),
+        }).eq("id", conversationId);
+
+        console.log(`[simulate/booking] ✓ confirm message inserted: "${result.content.slice(0, 60)}…"`);
+      } catch (msgErr) {
+        // Non-fatal — booking was created; log and continue
+        console.error("[simulate/booking] confirm_message error (non-fatal):", msgErr);
+      }
+    }
+
+    // ── Emit booking.created for reminder pipeline ───────────────
     currentStep = "inngest_send";
-    console.log("[simulate/booking] step: inngest_send  events=booking.created + booking.confirm-message");
-    await inngest.send([
-      {
-        name: "booking.created",
-        data: { orgId, bookingId, leadId, conversationId, startsAt },
-      },
-      {
-        name: "booking.confirm-message",
-        data: { orgId, bookingId },
-      },
-    ]);
-    console.log("[simulate/booking] ✓ booking.created + booking.confirm-message emitted");
+    console.log("[simulate/booking] step: inngest_send  event=booking.created");
+    await inngest.send({
+      name: "booking.created",
+      data: { orgId, bookingId, leadId, conversationId, startsAt },
+    });
+    console.log("[simulate/booking] ✓ booking.created emitted");
 
     return NextResponse.json({ ok: true, bookingId, conversationId });
 

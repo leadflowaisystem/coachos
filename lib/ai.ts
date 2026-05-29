@@ -328,7 +328,8 @@ export async function generateBookingConfirmMessage(params: {
     };
   }
 
-  await assertAiNotBlocked(params.orgId);
+  // NOTE: intentionally NO assertAiNotBlocked here.
+  // Booking confirmation messages are operational (not AI reply quota).
 
   const { system, user } = buildBookingConfirmPrompt({
     leadFirstName:        params.leadFirstName,
@@ -338,26 +339,36 @@ export async function generateBookingConfirmMessage(params: {
     coachOffer:           params.voiceProfile?.offer ?? "",
   });
 
-  const response = await client.chat.completions.create({
-    model:       MODEL_SMART,
-    max_tokens:  100,
-    temperature: 0.75,
-    messages: [
-      { role: "system", content: system },
-      { role: "user",   content: user   },
-    ],
-  });
+  try {
+    const response = await client.chat.completions.create({
+      model:       MODEL_SMART,
+      max_tokens:  100,
+      temperature: 0.75,
+      messages: [
+        { role: "system", content: system },
+        { role: "user",   content: user   },
+      ],
+    });
 
-  const content   = response.choices[0]?.message?.content?.trim() ?? "…";
-  const tokensIn  = response.usage?.prompt_tokens     ?? 0;
-  const tokensOut = response.usage?.completion_tokens ?? 0;
-  const p         = priceFor(MODEL_SMART);
-  const costInr   = tokensIn * p.in + tokensOut * p.out;
+    const content   = response.choices[0]?.message?.content?.trim() ?? "…";
+    const tokensIn  = response.usage?.prompt_tokens     ?? 0;
+    const tokensOut = response.usage?.completion_tokens ?? 0;
+    const p         = priceFor(MODEL_SMART);
+    const costInr   = tokensIn * p.in + tokensOut * p.out;
 
-  console.log(`[ai:booking-confirm] tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
-  await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
+    console.log(`[ai:booking-confirm] tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
+    await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
 
-  return { content, tokensIn, tokensOut, costInr };
+    return { content, tokensIn, tokensOut, costInr };
+  } catch (err) {
+    console.error("[ai:booking-confirm] LLM call failed, using template fallback:", err);
+    const urlPart = params.meetingUrl ? ` ${params.meetingUrl}.` : " The meeting link will be sent shortly.";
+    const name    = params.leadFirstName ? `, ${params.leadFirstName}` : "";
+    return {
+      content:  `Done${name}. ${params.meetingTimeFormatted} is locked in.${urlPart} Talk soon.`,
+      tokensIn: 0, tokensOut: 0, costInr: 0,
+    };
+  }
 }
 
 // ── generatePaymentLinkMessage ─────────────────────────────────────
@@ -383,7 +394,8 @@ export async function generatePaymentLinkMessage(params: {
     };
   }
 
-  await assertAiNotBlocked(params.orgId);
+  // NOTE: intentionally NO assertAiNotBlocked here.
+  // Payment link messages are operational (not AI reply quota).
 
   const { system, user } = buildPaymentLinkPrompt({
     leadFirstName: params.leadFirstName,
@@ -394,24 +406,33 @@ export async function generatePaymentLinkMessage(params: {
     coachOffer:    params.voiceProfile?.offer ?? "",
   });
 
-  const response = await client.chat.completions.create({
-    model:       MODEL_SMART,
-    max_tokens:  100,
-    temperature: 0.75,
-    messages: [
-      { role: "system", content: system },
-      { role: "user",   content: user   },
-    ],
-  });
+  let content: string;
+  let tokensIn = 0, tokensOut = 0, costInr = 0;
 
-  const content   = response.choices[0]?.message?.content?.trim() ?? "…";
-  const tokensIn  = response.usage?.prompt_tokens     ?? 0;
-  const tokensOut = response.usage?.completion_tokens ?? 0;
-  const p         = priceFor(MODEL_SMART);
-  const costInr   = tokensIn * p.in + tokensOut * p.out;
+  try {
+    const response = await client.chat.completions.create({
+      model:       MODEL_SMART,
+      max_tokens:  100,
+      temperature: 0.75,
+      messages: [
+        { role: "system", content: system },
+        { role: "user",   content: user   },
+      ],
+    });
 
-  console.log(`[ai:payment-link] tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
-  await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
+    content  = response.choices[0]?.message?.content?.trim() ?? "…";
+    tokensIn  = response.usage?.prompt_tokens     ?? 0;
+    tokensOut = response.usage?.completion_tokens ?? 0;
+    const p  = priceFor(MODEL_SMART);
+    costInr  = tokensIn * p.in + tokensOut * p.out;
+    console.log(`[ai:payment-link] tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
+    await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
+  } catch (err) {
+    console.error("[ai:payment-link] LLM call failed, using template fallback:", err);
+    const name   = params.leadFirstName ? `, ${params.leadFirstName}` : "";
+    const amount = `₹${params.amountInr.toLocaleString("en-IN")}`;
+    content = `Here you go${name}. ${amount} for ${params.description}: ${params.paymentUrl} Takes 30 seconds.`;
+  }
 
   return { content, tokensIn, tokensOut, costInr };
 }

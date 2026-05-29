@@ -261,6 +261,11 @@ export function DashboardView({ initialData, orgId, isDev }: Props) {
         <StatCard>
           <CardLabel>Conversion funnel</CardLabel>
           <FunnelChart steps={funnelSteps} />
+          {funnel.paid > funnel.booked && (
+            <p className="mt-2 text-xs text-[var(--text-3)]">
+              Paid includes leads who paid without booking a call (via revival or direct pay). That&apos;s why Paid can exceed Booked.
+            </p>
+          )}
           <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--border)] pt-4">
             <div>
               <p className="text-[11px] text-[var(--text-3)]">DM → Paid</p>

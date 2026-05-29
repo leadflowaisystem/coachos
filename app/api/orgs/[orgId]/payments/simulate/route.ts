@@ -15,6 +15,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
+import { generatePaymentLinkMessage } from "@/lib/ai";
+import { getLeadFirstName } from "@/lib/leads";
 
 interface Params { params: { orgId: string } }
 
@@ -102,19 +104,55 @@ export async function POST(req: NextRequest, { params }: Params) {
       const pid = (payment as { id: string }).id;
       console.log(`[simulate/payment] payment created: ${pid}`);
 
+      // ── Send payment link message synchronously ────────────────
+      // (Dev simulate: bypass Inngest so the message appears immediately)
+      if (conversationId) {
+        currentStep = "link_message";
+        console.log("[simulate/payment] step: link_message  conv=", conversationId);
+        try {
+          const [leadRes, voiceRes] = await Promise.all([
+            svc.from("leads").select("name, external_id").eq("id", leadId).maybeSingle(),
+            svc.from("voice_profiles").select("tone, offer").eq("org_id", orgId).maybeSingle(),
+          ]);
+          const lead  = leadRes.data  as { name: string | null; external_id: string | null } | null;
+          const voice = voiceRes.data as { tone: string; offer: string } | null;
+
+          const result = await generatePaymentLinkMessage({
+            leadFirstName: getLeadFirstName({ name: lead?.name, external_id: lead?.external_id }),
+            amountInr:     amountInr!,
+            description:   description || voice?.offer || "the program",
+            paymentUrl:    fakeUrl,
+            voiceProfile:  voice ? { tone: voice.tone, offer: voice.offer, price_range: "", sells: "", objections: [], extra_context: "" } : null,
+            orgId,
+          });
+
+          const now2 = new Date().toISOString();
+          await svc.from("messages").insert({
+            conversation_id: conversationId,
+            org_id:          orgId,
+            direction:       "outbound",
+            content:         result.content,
+            sent_at:         now2,
+            metadata:        { source: "payment_link" },
+          });
+          await svc.from("conversations").update({
+            last_message_at:      now2,
+            last_message_preview: result.content.slice(0, 80),
+          }).eq("id", conversationId);
+
+          console.log(`[simulate/payment] ✓ payment link message inserted: "${result.content.slice(0, 60)}…"`);
+        } catch (msgErr) {
+          console.error("[simulate/payment] link_message error (non-fatal):", msgErr);
+        }
+      }
+
       currentStep = "inngest_send";
-      console.log("[simulate/payment] step: inngest_send  events=payment.created + payment.link-message");
-      await inngest.send([
-        {
-          name: "payment.created",
-          data: { orgId, paymentId: pid, leadId, conversationId },
-        },
-        {
-          name: "payment.link-message",
-          data: { orgId, paymentId: pid, description: description ?? null },
-        },
-      ]);
-      console.log("[simulate/payment] ✓ payment.created + payment.link-message emitted");
+      console.log("[simulate/payment] step: inngest_send  event=payment.created");
+      await inngest.send({
+        name: "payment.created",
+        data: { orgId, paymentId: pid, leadId, conversationId },
+      });
+      console.log("[simulate/payment] ✓ payment.created emitted");
 
       return NextResponse.json({ ok: true, paymentId: pid, conversationId });
     }

@@ -277,9 +277,17 @@ export default async function OrgHomePage({ params }: Props) {
   }));
 
   // ── User name ───────────────────────────────────────────────
-  const email = user.email ?? "";
-  const userName = email.split("@")[0].split(".")[0];
-  const displayName = userName.charAt(0).toUpperCase() + userName.slice(1);
+  // Priority: full_name from auth metadata → org name
+  // NEVER fall back to the email prefix (it looks like "0mnaarkar2673")
+  const rawFullName =
+    ((user.user_metadata?.full_name as string | undefined) ?? "").trim() ||
+    ((user.user_metadata?.name      as string | undefined) ?? "").trim();
+  const displayName = rawFullName
+    ? (() => {
+        const first = rawFullName.split(/\s+/)[0];
+        return first.charAt(0).toUpperCase() + first.slice(1);
+      })()
+    : org.name;
 
   // ── Motivational line ───────────────────────────────────────
   const motivationalLine = MOTIVATIONAL_LINES[getDayOfYear() % MOTIVATIONAL_LINES.length];
