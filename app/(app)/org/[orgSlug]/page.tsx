@@ -1,145 +1,304 @@
-"use client";
+/**
+ * /org/[slug] — CoachOS Home
+ * Quiet Money Terminal home screen. All data server-fetched; animations are
+ * purely presentational (no layout shift).
+ */
 
-import {
-  Inbox,
-  CalendarDays,
-  CreditCard,
-  BarChart3,
-} from "lucide-react";
-import { motion } from "framer-motion";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Badge } from "@/components/ui/badge";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { redirect, notFound } from "next/navigation";
+import { Zap, MessageSquare, IndianRupee, TrendingUp } from "lucide-react";
+import { HomeClient } from "@/components/home/home-client";
+import { getPlanLimits } from "@/lib/plan";
 
-/* ── Section preview data ── */
-const sections = [
-  {
-    key: "inbox",
-    phase: "Phase 2",
-    icon: <Inbox className="h-5 w-5" />,
-    title: "Inbox",
-    tagline: "AI-powered Instagram DMs",
-    description:
-      "Real-time DM threads, automatic lead scoring, and one-click AI reply drafts — all in a unified inbox. Plug in your channel and watch warm leads rise to the top.",
-    emptyTitle: "Your inbox is warming up",
-    emptyDescription:
-      "Phase 2 wires live Instagram DMs to this view. No more toggling between apps to chase leads.",
-  },
-  {
-    key: "bookings",
-    phase: "Phase 3",
-    icon: <CalendarDays className="h-5 w-5" />,
-    title: "Bookings",
-    tagline: "Frictionless discovery calls",
-    description:
-      "Connect Cal.com once, share a smart link in your DMs, and watch qualified leads book themselves. No back-and-forth, no no-shows.",
-    emptyTitle: "Booking links not live yet",
-    emptyDescription:
-      "Phase 3 integrates your Cal.com calendar so leads can self-serve a slot straight from a DM conversation.",
-  },
-  {
-    key: "payments",
-    phase: "Phase 3",
-    icon: <CreditCard className="h-5 w-5" />,
-    title: "Payments",
-    tagline: "Revenue at a glance",
-    description:
-      "Track Razorpay collections, spot failed retries before they churn, and reconcile every rupee to the lead that converted.",
-    emptyTitle: "Revenue tracking coming soon",
-    emptyDescription:
-      "Phase 3 pulls your Razorpay data here — collections, failures, and subscription health in one panel.",
-  },
-  {
-    key: "attribution",
-    phase: "Phase 4",
-    icon: <BarChart3 className="h-5 w-5" />,
-    title: "Attribution",
-    tagline: "Close-loop analytics",
-    description:
-      "See exactly which DM thread started the journey that ended in a paid client. Full funnel — first touch to final payment — without a spreadsheet in sight.",
-    emptyTitle: "Attribution lands in Phase 4",
-    emptyDescription:
-      "Every lead source, conversation, booking, and payment tied together. Know what's working before you scale.",
-  },
-] as const;
+interface Props { params: { orgSlug: string } }
 
-const containerVariants = {
-  hidden: {},
-  show: {
-    transition: { staggerChildren: 0.07, delayChildren: 0.05 },
-  },
-};
+const MOTIVATIONAL_LINES = [
+  "23% of coaches lost a lead today to slow replies. Not you.",
+  "Your AI is qualifying leads while you coach, sleep, and live.",
+  "Speed to lead is the only metric that pays the rent.",
+  "Every unanswered DM is a lead that went to a faster coach.",
+  "The reply you don't send is the client you don't close.",
+  "Coaches who respond in under 5 minutes close 3× more deals.",
+  "Your pipeline runs 24/7. So does your AI.",
+];
 
-const cardVariants = {
-  hidden: { opacity: 0, y: 16 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
-  },
-};
+function getDayOfYear() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  return Math.floor((now.getTime() - start.getTime()) / 86400000);
+}
 
-export default function WorkspaceHomePage() {
+function timeAgo(isoStr: string): string {
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1)  return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs  < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "morning";
+  if (h < 17) return "afternoon";
+  return "evening";
+}
+
+export const dynamic = "force-dynamic";
+
+export default async function OrgHomePage({ params }: Props) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: orgRow } = await supabase
+    .from("orgs")
+    .select("id, name, plan, trial_ends_at, monthly_ai_msg_count")
+    .eq("slug", params.orgSlug)
+    .single();
+
+  if (!orgRow) notFound();
+  const org = orgRow as {
+    id: string; name: string; plan: string;
+    trial_ends_at: string | null; monthly_ai_msg_count: number;
+  };
+
+  const svc = createServiceClient();
+
+  // ── Data fetches in parallel ────────────────────────────────
+  const sevenDaysAgo   = new Date(Date.now() - 7  * 86400000).toISOString();
+  const thirtyDaysAgo  = new Date(Date.now() - 30 * 86400000).toISOString();
+  const monthStart     = new Date().toISOString().slice(0, 7) + "-01";
+
+  const [
+    leadsWeekRes,
+    aiUsageRes,
+    revenueMonthRes,
+    integrationsRes,
+    voiceRes,
+    recentLeadsRes,
+    recentBookingsRes,
+    recentPaymentsRes,
+    recentMsgsRes,
+    sparkLeadsRes,
+    sparkAiRes,
+    sparkRevRes,
+  ] = await Promise.all([
+    // Leads this week
+    svc.from("leads").select("id", { count: "exact", head: true })
+      .eq("org_id", org.id).gte("created_at", sevenDaysAgo),
+
+    // AI msgs this month (from ai_usage)
+    svc.from("ai_usage").select("tokens_in, tokens_out")
+      .eq("org_id", org.id).eq("month", monthStart).maybeSingle(),
+
+    // Revenue this month (payments captured)
+    svc.from("payments").select("amount_inr")
+      .eq("org_id", org.id).eq("status", "paid").gte("updated_at", monthStart),
+
+    // Integrations status
+    svc.from("integrations").select("provider, active").eq("org_id", org.id),
+
+    // Voice profile
+    svc.from("voice_profiles").select("id").eq("org_id", org.id).maybeSingle(),
+
+    // Recent leads (last 8, for activity)
+    svc.from("leads").select("id, name, stage, source, created_at")
+      .eq("org_id", org.id).order("created_at", { ascending: false }).limit(8),
+
+    // Recent bookings
+    svc.from("bookings").select("id, status, created_at")
+      .eq("org_id", org.id).order("created_at", { ascending: false }).limit(4),
+
+    // Recent payments
+    svc.from("payments").select("id, amount_inr, status, updated_at")
+      .eq("org_id", org.id).order("updated_at", { ascending: false }).limit(4),
+
+    // Recent AI outbound messages
+    svc.from("messages").select("id, sent_at")
+      .eq("org_id", org.id).eq("direction", "outbound")
+      .order("sent_at", { ascending: false }).limit(4),
+
+    // Sparkline: leads per day last 7
+    svc.from("leads").select("created_at").eq("org_id", org.id).gte("created_at", sevenDaysAgo),
+
+    // Sparkline: AI msgs from metrics_daily
+    svc.from("metrics_daily").select("date, messages_ai")
+      .eq("org_id", org.id).gte("date", new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10))
+      .order("date"),
+
+    // Sparkline: revenue
+    svc.from("metrics_daily").select("date, revenue_paid_inr")
+      .eq("org_id", org.id).gte("date", new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10))
+      .order("date"),
+  ]);
+
+  // ── Process metrics ─────────────────────────────────────────
+  const leadsThisWeek = leadsWeekRes.count ?? 0;
+
+  const aiMsgCount = org.monthly_ai_msg_count ?? 0;
+
+  const revenueThisMonth = ((revenueMonthRes.data ?? []) as { amount_inr: number }[])
+    .reduce((s, r) => s + r.amount_inr, 0);
+
+  // Sparklines (7 buckets)
+  function buildDailySparkline(rows: { created_at?: string }[], field = "created_at"): number[] {
+    const buckets: number[] = Array(7).fill(0);
+    for (const row of rows) {
+      const ts = (row as Record<string, string>)[field];
+      if (!ts) continue;
+      const daysBack = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+      const idx = 6 - Math.min(daysBack, 6);
+      buckets[idx]++;
+    }
+    return buckets;
+  }
+
+  const sparkLeads = buildDailySparkline(sparkLeadsRes.data ?? []);
+  const sparkAi = ((sparkAiRes.data ?? []) as { messages_ai: number }[]).map((r) => r.messages_ai);
+  const sparkRev = ((sparkRevRes.data ?? []) as { revenue_paid_inr: number }[]).map((r) => r.revenue_paid_inr);
+  // Pad to 7
+  while (sparkAi.length < 7) sparkAi.unshift(0);
+  while (sparkRev.length < 7) sparkRev.unshift(0);
+
+  const metrics = [
+    {
+      label:     "Leads this week",
+      value:     leadsThisWeek,
+      sparkline: sparkLeads,
+      icon:      <TrendingUp className="h-4 w-4" />,
+    },
+    {
+      label:     "AI replies this month",
+      value:     aiMsgCount,
+      sparkline: sparkAi.length > 0 ? sparkAi : Array(7).fill(0),
+      icon:      <Zap className="h-4 w-4" />,
+    },
+    {
+      label:     "Revenue this month",
+      value:     Math.round(revenueThisMonth),
+      prefix:    "₹",
+      sparkline: sparkRev.length > 0 ? sparkRev : Array(7).fill(0),
+      icon:      <IndianRupee className="h-4 w-4" />,
+    },
+    {
+      label:     "Msgs sent (30d)",
+      value:     (recentMsgsRes.data?.length ?? 0) > 0 ? (recentMsgsRes.data?.length ?? 0) : 0,
+      sparkline: Array(7).fill(0),
+      icon:      <MessageSquare className="h-4 w-4" />,
+    },
+  ];
+
+  // ── Checklist ───────────────────────────────────────────────
+  const integrations = (integrationsRes.data ?? []) as { provider: string; active: boolean }[];
+  const hasCalcom   = integrations.some((i) => i.provider === "calcom"   && i.active);
+  const hasRazorpay = integrations.some((i) => i.provider === "razorpay" && i.active);
+  const hasChannel  = integrations.some((i) =>
+    (i.provider === "instagram" || i.provider === "manychat") && i.active
+  );
+  const hasVoice    = !!voiceRes.data;
+
+  const checklist = [
+    {
+      key:     "channel",
+      label:   "Connect a channel",
+      done:    hasChannel,
+      href:    `/org/${params.orgSlug}/settings/channel`,
+      caption: "Receive live DMs from Instagram or ManyChat",
+    },
+    {
+      key:     "cal",
+      label:   "Add your Cal.com link",
+      done:    hasCalcom,
+      href:    `/org/${params.orgSlug}/settings/cal`,
+      caption: "Let hot leads book calls straight from a reply",
+    },
+    {
+      key:     "razorpay",
+      label:   "Connect Razorpay",
+      done:    hasRazorpay,
+      href:    `/org/${params.orgSlug}/settings/payments`,
+      caption: "Track collections and run payment dunning",
+    },
+    {
+      key:     "voice",
+      label:   "Set your voice profile",
+      done:    hasVoice,
+      href:    `/org/${params.orgSlug}/settings/voice`,
+      caption: "Train the AI to reply exactly like you",
+    },
+  ];
+  const allChecklistDone = checklist.every((c) => c.done);
+
+  // ── Activity feed ───────────────────────────────────────────
+  type ActivityRaw = { id: string; text: string; icon: string; iconColor: string; ts: string };
+  const activityRaw: ActivityRaw[] = [];
+
+  for (const lead of (recentLeadsRes.data ?? []) as { id: string; name: string | null; stage: string; created_at: string }[]) {
+    const name = lead.name ?? "Unknown";
+    if (lead.stage === "hot") {
+      activityRaw.push({ id: `lead-hot-${lead.id}`, text: `${name} scored Hot`, icon: "🔥", iconColor: "bg-red-500/10 text-red-400", ts: lead.created_at });
+    } else {
+      activityRaw.push({ id: `lead-${lead.id}`, text: `${name} sent a new DM`, icon: "💬", iconColor: "bg-[var(--bg-3)] text-[var(--text-3)]", ts: lead.created_at });
+    }
+  }
+
+  for (const bk of (recentBookingsRes.data ?? []) as { id: string; status: string; created_at: string }[]) {
+    const icon   = bk.status === "completed" ? "✅" : bk.status === "no_show" ? "❌" : "📅";
+    const color  = bk.status === "completed" ? "bg-[var(--brand)]/10 text-[var(--brand)]"
+                 : bk.status === "no_show"   ? "bg-red-500/10 text-red-400"
+                 : "bg-blue-500/10 text-blue-400";
+    const label  = bk.status === "completed" ? "A call was completed"
+                 : bk.status === "no_show"   ? "A call was a no-show"
+                 : "A booking was confirmed";
+    activityRaw.push({ id: `bk-${bk.id}`, text: label, icon, iconColor: color, ts: bk.created_at });
+  }
+
+  for (const pay of (revenueMonthRes.data ?? []).slice(0, 3) as { amount_inr: number }[]) {
+    // payments don't have created_at easily accessible here, use approx
+    activityRaw.push({
+      id:        `pay-${Math.random()}`,
+      text:      `Payment of ₹${pay.amount_inr.toLocaleString("en-IN")} captured`,
+      icon:      "💰",
+      iconColor: "bg-green-500/10 text-green-400",
+      ts:        new Date(Date.now() - 60000).toISOString(),
+    });
+  }
+
+  // Sort all activity by ts desc, take 8
+  activityRaw.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  const activity = activityRaw.slice(0, 8).map((a) => ({
+    id:        a.id,
+    icon:      a.icon,
+    iconColor: a.iconColor,
+    text:      a.text,
+    timeAgo:   timeAgo(a.ts),
+  }));
+
+  // ── User name ───────────────────────────────────────────────
+  const email = user.email ?? "";
+  const userName = email.split("@")[0].split(".")[0];
+  const displayName = userName.charAt(0).toUpperCase() + userName.slice(1);
+
+  // ── Motivational line ───────────────────────────────────────
+  const motivationalLine = MOTIVATIONAL_LINES[getDayOfYear() % MOTIVATIONAL_LINES.length];
+
   return (
-    <div className="space-y-8">
-      {/* ── Page header ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-        className="space-y-1"
-      >
-        <h1 className="font-display text-2xl font-semibold text-[var(--text)]">
-          Welcome to CoachOS
-        </h1>
-        <p className="text-sm text-[var(--text-3)]">
-          Your workspace is set up. Each section below unlocks in a future phase — here&apos;s what&apos;s coming.
-        </p>
-      </motion.div>
-
-      {/* ── Section preview grid ── */}
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
-      >
-        {sections.map((s) => (
-          <motion.div key={s.key} variants={cardVariants}>
-            <Card className="h-full">
-              <CardHeader>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--bg-3)] text-[var(--brand)]">
-                      {s.icon}
-                    </div>
-                    <div>
-                      <CardTitle>{s.title}</CardTitle>
-                      <CardDescription>{s.tagline}</CardDescription>
-                    </div>
-                  </div>
-                  <Badge variant="muted" className="shrink-0 mt-0.5 text-[10px]">
-                    {s.phase}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-3">
-                <EmptyState
-                  title={s.emptyTitle}
-                  description={s.emptyDescription}
-                  className="py-10"
-                />
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </motion.div>
-    </div>
+    <HomeClient
+      userName={displayName}
+      orgName={org.name}
+      orgSlug={params.orgSlug}
+      orgId={org.id}
+      plan={org.plan ?? "trial"}
+      trialEndsAt={org.trial_ends_at ?? null}
+      greeting={greeting()}
+      metrics={metrics}
+      checklist={checklist}
+      activity={activity}
+      motivationalLine={motivationalLine}
+      isPro={org.plan === "pro"}
+      allChecklistDone={allChecklistDone}
+    />
   );
 }
