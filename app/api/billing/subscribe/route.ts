@@ -7,48 +7,62 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { createPlatformSubscription } from "@/lib/platform-billing";
+import { createPlatformSubscription, PLAN_IDS } from "@/lib/platform-billing";
 import { logAudit } from "@/lib/audit";
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json().catch(() => ({}));
-  const { orgId, plan } = body as { orgId?: string; plan?: string };
+    const body = await req.json().catch(() => ({}));
+    const { orgId, plan } = body as { orgId?: string; plan?: string };
 
-  if (!orgId || !plan || !["starter", "growth", "pro"].includes(plan)) {
-    return NextResponse.json({ error: "Invalid params" }, { status: 400 });
+    if (!orgId || !plan || !["starter", "growth", "pro"].includes(plan)) {
+      return NextResponse.json({ error: "Invalid params" }, { status: 400 });
+    }
+
+    // Verify user is owner of this org
+    const svc = createServiceClient();
+    const { data: member } = await svc
+      .from("org_members").select("role")
+      .eq("org_id", orgId).eq("user_id", user.id).single();
+
+    if (!member || (member as { role: string }).role !== "owner") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    // Debug plan → ID mapping (helps catch env var mismatches)
+    const planId = PLAN_IDS[plan] ?? "(not set)";
+    console.log(`[billing/subscribe] plan=${plan} → planId=${planId} orgId=${orgId}`);
+
+    if (!planId || planId === "(not set)") {
+      console.error(`[billing/subscribe] PLATFORM_PLAN_${plan.toUpperCase()}_ID env var is not set`);
+      return NextResponse.json({ error: `Plan ID for "${plan}" is not configured` }, { status: 500 });
+    }
+
+    const result = await createPlatformSubscription(
+      orgId,
+      plan as "starter" | "growth" | "pro",
+      user.email,
+    );
+
+    if (!result) {
+      return NextResponse.json({ error: "Failed to create subscription — check Razorpay credentials" }, { status: 500 });
+    }
+
+    // Persist subscription_id pending activation
+    await svc.from("orgs").update({
+      subscription_id:     result.subscriptionId,
+      subscription_status: "created",
+    }).eq("id", orgId);
+
+    await logAudit(svc, orgId, user.id, "billing.subscribe_initiated", { plan, planId });
+
+    return NextResponse.json({ shortUrl: result.shortUrl });
+  } catch (err) {
+    console.error("[billing/subscribe] unhandled error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-
-  // Verify user is owner of this org
-  const svc = createServiceClient();
-  const { data: member } = await svc
-    .from("org_members").select("role")
-    .eq("org_id", orgId).eq("user_id", user.id).single();
-
-  if (!member || (member as { role: string }).role !== "owner") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-
-  const result = await createPlatformSubscription(
-    orgId,
-    plan as "starter" | "growth" | "pro",
-    user.email,
-  );
-
-  if (!result) {
-    return NextResponse.json({ error: "Failed to create subscription" }, { status: 500 });
-  }
-
-  // Persist subscription_id pending activation
-  await svc.from("orgs").update({
-    subscription_id:     result.subscriptionId,
-    subscription_status: "created",
-  }).eq("id", orgId);
-
-  await logAudit(svc, orgId, user.id, "billing.subscribe_initiated", { plan });
-
-  return NextResponse.json({ shortUrl: result.shortUrl });
 }

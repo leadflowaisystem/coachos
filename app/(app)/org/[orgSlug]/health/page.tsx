@@ -171,7 +171,7 @@ export default async function HealthPage({
               ? "Manage →"
               : "Connect →"
           }
-          actionHref={`/org/${params.orgSlug}/settings/integrations/calcom`}
+          actionHref={`/org/${params.orgSlug}/settings/cal`}
         />
 
         {/* ── Razorpay ── */}
@@ -191,7 +191,7 @@ export default async function HealthPage({
               ? "Manage →"
               : "Connect →"
           }
-          actionHref={`/org/${params.orgSlug}/settings/integrations/razorpay`}
+          actionHref={`/org/${params.orgSlug}/settings/payments`}
         />
 
       </div>

@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
 import { rateLimit, getIp } from "@/lib/ratelimit";
+import { withErrorHandler } from "@/lib/api-handler";
 
 interface Params { params: { orgId: string } }
 
@@ -25,7 +26,7 @@ async function assertMember(orgId: string) {
   return data ? user : null;
 }
 
-export async function POST(req: NextRequest, { params }: Params) {
+export const POST = withErrorHandler("inbox/send", async (req: NextRequest, { params }: Params) => {
   const { allowed } = rateLimit(`simulate:${getIp(req)}`, { limit: 30 });
   if (!allowed) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
 
@@ -132,4 +133,4 @@ export async function POST(req: NextRequest, { params }: Params) {
   });
 
   return NextResponse.json({ conversationId, leadId, messageId });
-}
+});

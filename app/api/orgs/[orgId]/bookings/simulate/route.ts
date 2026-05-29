@@ -17,6 +17,15 @@ import { inngest } from "@/lib/inngest/client";
 interface Params { params: { orgId: string } }
 
 export async function POST(req: NextRequest, { params }: Params) {
+  try {
+  return await _POST(req, params);
+  } catch (err) {
+    console.error("[simulate/booking] unhandled error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+async function _POST(req: NextRequest, params: { orgId: string }) {
   // Hard block in production
   if (process.env.NODE_ENV === "production") {
     return NextResponse.json(

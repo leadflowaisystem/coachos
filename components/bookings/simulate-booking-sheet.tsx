@@ -94,8 +94,10 @@ export function SimulateBookingSheet({ orgId, leads, onDone }: Props) {
         }),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Simulation failed");
+      // Always try to parse JSON; catch malformed/empty body gracefully
+      const json = await res.json().catch(() => ({})) as { error?: string; ok?: boolean };
+      if (!res.ok) throw new Error(json.error ?? `Server error (${res.status})`);
+      if (!json.ok && res.status !== 200) throw new Error("Simulation failed");
 
       setSuccess(true);
       setTimeout(() => {

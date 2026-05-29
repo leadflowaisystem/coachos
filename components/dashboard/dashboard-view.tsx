@@ -161,12 +161,14 @@ export function DashboardView({ initialData, orgId, isDev }: Props) {
 
   const { funnel, revenue, speed_ms, ai, sources, sparkline } = data;
 
+  // All bars use the same jade color — opacity modifiers on CSS-variable hex values
+  // don't render in Tailwind (requires RGB triplet). Width encodes the funnel shape.
   const funnelSteps = [
-    { label: "DMs received",   value: funnel.dms,       bgColor: "bg-[var(--brand)]/30",  color: "text-[var(--brand)]" },
-    { label: "Qualified",      value: funnel.qualified,  bgColor: "bg-[var(--brand)]/50",  color: "text-[var(--brand)]" },
-    { label: "Booked",         value: funnel.booked,     bgColor: "bg-[var(--brand)]/70",  color: "text-[var(--brand)]" },
-    { label: "Showed",         value: funnel.showed,     bgColor: "bg-[var(--brand)]/85",  color: "text-[var(--brand)]" },
-    { label: "Paid",           value: funnel.paid,       bgColor: "bg-[var(--brand)]",     color: "text-[var(--brand)]" },
+    { label: "DMs received", value: funnel.dms,       bgColor: "bg-[var(--brand)]", color: "text-[var(--brand)]" },
+    { label: "Qualified",    value: funnel.qualified,  bgColor: "bg-[var(--brand)]", color: "text-[var(--brand)]" },
+    { label: "Booked",       value: funnel.booked,     bgColor: "bg-[var(--brand)]", color: "text-[var(--brand)]" },
+    { label: "Showed",       value: funnel.showed,     bgColor: "bg-[var(--brand)]", color: "text-[var(--brand)]" },
+    { label: "Paid",         value: funnel.paid,       bgColor: "bg-[var(--brand)]", color: "text-[var(--brand)]" },
   ];
 
   const sparkData = sparkline.map((s) => s.revenue_inr);
