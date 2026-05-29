@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { z } from "zod";
 
 interface Params { params: { orgId: string } }
 
@@ -38,30 +39,28 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ voiceProfile: data ?? null });
 }
 
+const VoiceSchema = z.object({
+  tone:          z.string().min(1).max(500).optional(),
+  offer:         z.string().min(1).max(500).optional(),
+  price_range:   z.string().max(200).optional(),
+  sells:         z.string().max(1000).optional(),
+  objections:    z.array(z.string().max(200)).max(10).optional(),
+  extra_context: z.string().max(2000).optional(),
+}).refine((d) => Object.keys(d).length > 0, { message: "No fields provided" });
+
 export async function PUT(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json().catch(() => ({}));
-
-  const fields: {
-    tone?: string;
-    offer?: string;
-    price_range?: string;
-    sells?: string;
-    objections?: string[];
-    extra_context?: string;
-  } = {};
-  if ("tone"          in body) fields.tone          = body.tone          as string;
-  if ("offer"         in body) fields.offer         = body.offer         as string;
-  if ("price_range"   in body) fields.price_range   = body.price_range   as string;
-  if ("sells"         in body) fields.sells         = body.sells         as string;
-  if ("objections"    in body) fields.objections    = body.objections    as string[];
-  if ("extra_context" in body) fields.extra_context = body.extra_context as string;
-
-  if (Object.keys(fields).length === 0) {
-    return NextResponse.json({ error: "No fields provided" }, { status: 400 });
+  const raw = await req.json().catch(() => ({}));
+  const parsed = VoiceSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.errors[0]?.message ?? "Invalid input" },
+      { status: 400 }
+    );
   }
+  const fields = parsed.data;
 
   const now = new Date().toISOString();
   const service = createServiceClient();

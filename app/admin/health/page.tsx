@@ -216,7 +216,7 @@ async function checkAuditLog(): Promise<CheckResult> {
       return await svc
         .from("audit_log")
         .select("id", { count: "exact", head: true })
-        .ilike("event_type", "%error%")
+        .ilike("event", "%error%")
         .gte("created_at", since);
     });
 

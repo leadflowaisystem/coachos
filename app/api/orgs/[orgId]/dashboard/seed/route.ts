@@ -76,7 +76,7 @@ function getInboundMsg(stage: string): string {
 
 export async function POST(_req: NextRequest, { params }: Params) {
   if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not available in production" }, { status: 403 });
+    return NextResponse.json({ error: "Not found" }, { status: 404 }); // hide existence in prod
   }
 
   const supabase = createClient();

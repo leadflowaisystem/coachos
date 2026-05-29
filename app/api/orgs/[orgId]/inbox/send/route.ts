@@ -13,6 +13,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
 import { rateLimit, getIp } from "@/lib/ratelimit";
 import { withErrorHandler } from "@/lib/api-handler";
+import { z } from "zod";
 
 interface Params { params: { orgId: string } }
 
@@ -33,19 +34,24 @@ export const POST = withErrorHandler("inbox/send", async (req: NextRequest, { pa
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json().catch(() => ({})) as {
-    senderName?:   string;
-    senderHandle?: string;
-    content?:      string;
-  };
+  const SendSchema = z.object({
+    content:       z.string().min(1, "content is required").max(4000),
+    senderName:    z.string().max(200).optional(),
+    senderHandle:  z.string().max(200).optional(),
+  });
 
-  if (!body.content?.trim()) {
-    return NextResponse.json({ error: "content is required" }, { status: 400 });
+  const raw    = await req.json().catch(() => ({}));
+  const parsed = SendSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.errors[0]?.message ?? "Invalid input" },
+      { status: 400 }
+    );
   }
 
-  const externalId = (body.senderHandle ?? "").trim() || `manual_${Date.now()}`;
-  const name       = (body.senderName   ?? "").trim() || externalId;
-  const content    = body.content.trim();
+  const externalId = (parsed.data.senderHandle ?? "").trim() || `manual_${Date.now()}`;
+  const name       = (parsed.data.senderName   ?? "").trim() || externalId;
+  const content    = parsed.data.content.trim();
   const now        = new Date().toISOString();
   const svc        = createServiceClient();
 

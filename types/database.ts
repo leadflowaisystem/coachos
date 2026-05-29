@@ -93,6 +93,36 @@ export interface Database {
         };
         Relationships: [];
       };
+      error_log: {
+        Row: {
+          id:            string;
+          org_id:        string | null;
+          user_id:       string | null;
+          route:         string | null;
+          error_message: string;
+          stack:         string | null;
+          created_at:    string;
+        };
+        Insert: {
+          id?:           string;
+          org_id?:       string | null;
+          user_id?:      string | null;
+          route?:        string | null;
+          error_message: string;
+          stack?:        string | null;
+          created_at?:   string;
+        };
+        Update: {
+          id?:           string;
+          org_id?:       string | null;
+          user_id?:      string | null;
+          route?:        string | null;
+          error_message?: string;
+          stack?:        string | null;
+          created_at?:   string;
+        };
+        Relationships: [];
+      };
       audit_log: {
         Row: {
           id: string;
