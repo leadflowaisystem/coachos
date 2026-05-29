@@ -14,6 +14,70 @@ import { buildQualifyPrompt } from "@/prompts/qualify";
 import { buildDraftPrompt }   from "@/prompts/draft";
 import { buildRevivalPrompt } from "@/prompts/revival";
 import { createServiceClient } from "@/lib/supabase/server";
+import { isTrialExpired, getPlanLimits } from "@/lib/plan";
+
+// ── Plan-gating error ─────────────────────────────────────────────
+export class AiBlockedError extends Error {
+  constructor(public reason: "trial_expired" | "limit_reached" | "cancelled") {
+    super(`AI blocked: ${reason}`);
+    this.name = "AiBlockedError";
+  }
+}
+
+/**
+ * Asserts the org can make another AI reply. Throws AiBlockedError if not.
+ * Also auto-resets the monthly counter when the month rolls over, and
+ * increments it for this call.
+ */
+async function assertAiNotBlocked(orgId: string): Promise<void> {
+  const service = createServiceClient();
+
+  const { data } = await service
+    .from("orgs")
+    .select("plan, trial_ends_at, monthly_ai_msg_count, ai_msgs_reset_at")
+    .eq("id", orgId)
+    .single();
+
+  if (!data) return; // Unknown org — don't block; let the insert fail downstream
+
+  const org = data as {
+    plan: string;
+    trial_ends_at: string | null;
+    monthly_ai_msg_count: number;
+    ai_msgs_reset_at: string;
+  };
+
+  // Auto-reset when month rolls over
+  const resetAt = new Date(org.ai_msgs_reset_at);
+  const now = new Date();
+  if (resetAt.getFullYear() !== now.getFullYear() || resetAt.getMonth() !== now.getMonth()) {
+    await service.from("orgs").update({
+      monthly_ai_msg_count: 1,
+      ai_msgs_reset_at: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+    }).eq("id", orgId);
+    return; // Fresh month — not blocked
+  }
+
+  // Check plan limits
+  if (isTrialExpired(org.plan, org.trial_ends_at)) {
+    throw new AiBlockedError("trial_expired");
+  }
+
+  const limits = getPlanLimits(org.plan);
+
+  if (limits.aiMsgsPerMonth === 0) {
+    throw new AiBlockedError("cancelled");
+  }
+
+  if (limits.aiMsgsPerMonth !== -1 && org.monthly_ai_msg_count >= limits.aiMsgsPerMonth) {
+    throw new AiBlockedError("limit_reached");
+  }
+
+  // Increment counter (pre-charge before the API call to avoid over-usage on retries)
+  await service.from("orgs").update({
+    monthly_ai_msg_count: org.monthly_ai_msg_count + 1,
+  }).eq("id", orgId);
+}
 
 // ── Client ──────────────────────────────────────────────────────
 const client = new OpenAI({
@@ -145,6 +209,9 @@ export async function draftReply(params: {
     return { content: "Thanks for reaching out! I'd love to chat more about how we can work together.", tokensIn: 0, tokensOut: 0, costInr: 0 };
   }
 
+  // Gate on plan limits — throws AiBlockedError if over limit / trial expired
+  await assertAiNotBlocked(params.orgId);
+
   const { system, user } = buildDraftPrompt({
     messages:     params.messages,
     voiceProfile: params.voiceProfile,
@@ -203,6 +270,9 @@ export async function generateRevivalNudge(params: {
       tokensIn: 0, tokensOut: 0, costInr: 0,
     };
   }
+
+  // Gate on plan limits
+  await assertAiNotBlocked(params.orgId);
 
   const { system, user } = buildRevivalPrompt({
     messages:     params.messages,

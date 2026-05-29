@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { Plus, Zap } from "lucide-react";
-import { motion } from "framer-motion";
+import Link from "next/link";
+import { Plus, Zap, AlertTriangle } from "lucide-react";
 import { Switch }                    from "@/components/ui/switch";
-import { Button }                    from "@/components/ui/button";
 import { ConversationListPanel }     from "./conversation-list-panel";
 import { NewDmSheet }                from "./new-dm-sheet";
 import { RemovedToast }              from "./removed-toast";
@@ -15,13 +14,15 @@ import { getInboxCache, setInboxCache } from "@/lib/inbox-cache";
 import type { InboxConversation }    from "@/types/inbox";
 
 interface Props {
-  orgSlug:         string;
-  orgId:           string;
-  orgName:         string;
-  autoSendReplies: boolean;
-  conversations:   InboxConversation[];
-  monthCostInr:    number;
-  children:        React.ReactNode;
+  orgSlug:            string;
+  orgId:              string;
+  orgName:            string;
+  autoSendReplies:    boolean;
+  conversations:      InboxConversation[];
+  monthCostInr:       number;
+  aiMsgsPerMonth?:    number;   // -1 = unlimited
+  monthlyAiMsgCount?: number;
+  children:           React.ReactNode;
 }
 
 export function InboxShell({
@@ -31,6 +32,8 @@ export function InboxShell({
   autoSendReplies: initialAutoSend,
   conversations: serverConversations,
   monthCostInr,
+  aiMsgsPerMonth   = -1,
+  monthlyAiMsgCount = 0,
   children,
 }: Props) {
   const pathname  = usePathname();
@@ -66,6 +69,13 @@ export function InboxShell({
     finally { setSavingAuto(false); }
   }
 
+  // AI limit banner
+  const isUnlimited = aiMsgsPerMonth === -1;
+  const isAtLimit   = !isUnlimited && monthlyAiMsgCount >= aiMsgsPerMonth;
+  const isNearLimit = !isUnlimited && !isAtLimit && aiMsgsPerMonth > 0
+    && (monthlyAiMsgCount / aiMsgsPerMonth) >= 0.8;
+  const pct = isUnlimited ? 0 : Math.min(100, Math.round((monthlyAiMsgCount / Math.max(aiMsgsPerMonth, 1)) * 100));
+
   return (
     // Full-bleed: cancel AppShell's p-6 padding so split pane reaches edges
     <div
@@ -100,6 +110,29 @@ export function InboxShell({
             </div>
           )}
         </div>
+
+        {/* AI limit banner — shown when >= 80% used or at limit */}
+        {(isAtLimit || isNearLimit) && (
+          <Link
+            href={`/org/${orgSlug}/settings/billing`}
+            className={cn(
+              "flex shrink-0 items-center gap-2 border-b px-3 py-2 text-[11px] transition-colors hover:opacity-90",
+              isAtLimit
+                ? "border-red-500/30 bg-red-500/10 text-red-400"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+            )}
+          >
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            <span className="flex-1 min-w-0">
+              {isAtLimit
+                ? `AI limit reached (${monthlyAiMsgCount}/${aiMsgsPerMonth})`
+                : `${pct}% of AI replies used`}
+            </span>
+            <span className="shrink-0 font-medium underline underline-offset-2">
+              Upgrade
+            </span>
+          </Link>
+        )}
 
         <ConversationListPanel
           orgSlug={orgSlug}

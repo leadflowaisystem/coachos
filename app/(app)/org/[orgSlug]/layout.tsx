@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { AppShell } from "@/components/layout/app-shell";
+import { TrialExpiredModal } from "@/components/layout/trial-expired-modal";
 
 interface Props {
   children: React.ReactNode;
@@ -19,7 +20,7 @@ export default async function OrgLayout({ children, params }: Props) {
   // Verify org exists and user is a member
   const { data: orgData } = await supabase
     .from("orgs")
-    .select("id, slug, name, onboarding_completed_at")
+    .select("id, slug, name, onboarding_completed_at, plan, trial_ends_at")
     .eq("slug", params.orgSlug)
     .single();
 
@@ -28,6 +29,8 @@ export default async function OrgLayout({ children, params }: Props) {
     slug: string;
     name: string;
     onboarding_completed_at: string | null;
+    plan: string;
+    trial_ends_at: string | null;
   } | null;
 
   if (!org) notFound();
@@ -83,6 +86,12 @@ export default async function OrgLayout({ children, params }: Props) {
       orgs={orgs}
       user={{ email: user.email ?? undefined }}
     >
+      {/* Trial expired modal — client component, renders nothing if not expired */}
+      <TrialExpiredModal
+        plan={org.plan ?? "trial"}
+        trialEndsAt={org.trial_ends_at ?? null}
+        orgSlug={params.orgSlug}
+      />
       {children}
     </AppShell>
   );

@@ -8,6 +8,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { InboxShell }     from "@/components/inbox/inbox-shell";
 import type { InboxConversation, InboxLead } from "@/types/inbox";
 import type { LeadStage } from "@/types/database";
+import { getPlanLimits } from "@/lib/plan";
 
 interface Props {
   children: React.ReactNode;
@@ -19,15 +20,16 @@ export default async function InboxLayout({ children, params }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Org data
+  // Org data — include plan + AI usage fields
   const { data: orgRow } = await supabase
     .from("orgs")
-    .select("id, name, auto_send_replies")
+    .select("id, name, auto_send_replies, plan, trial_ends_at, monthly_ai_msg_count")
     .eq("slug", params.orgSlug)
     .single();
 
   const org = orgRow as {
     id: string; name: string; auto_send_replies: boolean;
+    plan: string; trial_ends_at: string | null; monthly_ai_msg_count: number;
   } | null;
 
   if (!org) redirect("/");
@@ -83,6 +85,11 @@ export default async function InboxLayout({ children, params }: Props) {
 
   const monthCostInr = Number((usage as { cost_inr?: number } | null)?.cost_inr ?? 0);
 
+  // AI limit info for the banner
+  const limits = getPlanLimits(org.plan ?? "trial");
+  const aiMsgsPerMonth     = limits.aiMsgsPerMonth;      // -1 = unlimited
+  const monthlyAiMsgCount  = org.monthly_ai_msg_count ?? 0;
+
   return (
     <InboxShell
       orgSlug={params.orgSlug}
@@ -91,6 +98,8 @@ export default async function InboxLayout({ children, params }: Props) {
       autoSendReplies={org.auto_send_replies ?? false}
       conversations={conversations}
       monthCostInr={monthCostInr}
+      aiMsgsPerMonth={aiMsgsPerMonth}
+      monthlyAiMsgCount={monthlyAiMsgCount}
     >
       {children}
     </InboxShell>
