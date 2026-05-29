@@ -66,11 +66,12 @@ export const PLAN_FEATURES: Record<string, string[]> = {
   ],
   growth: [
     "2,000 AI replies/month",
-    "2 channels (Instagram + WhatsApp)",
+    "ManyChat + Instagram via ManyChat",
     "Everything in Starter",
     "Ghost revival sequences",
     "3 seats",
     "Priority support",
+    "WhatsApp — coming Q3 2026",
   ],
   pro: [
     "8,000 AI replies/month",

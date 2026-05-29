@@ -180,9 +180,42 @@ export function LandingPage() {
 
           <p className="mx-auto mt-6 max-w-xl text-lg text-[var(--text-3)] leading-relaxed">
             Stop losing leads to slow replies, no-shows, and payment ghosting.
-            CoachOS qualifies your DMs, books your calls, and chases your payments
-            while you sleep.
+            CoachOS qualifies your DMs{" "}
+            <span className="text-[var(--text-2)]">(via ManyChat or your inbox)</span>,
+            books your calls, and chases your payments while you sleep.
           </p>
+
+          {/* Channel availability strip */}
+          <div className="mx-auto mt-5 flex flex-wrap items-center justify-center gap-2 max-w-lg">
+            {[
+              { label: "ManyChat",              status: "live"    },
+              { label: "Instagram via ManyChat", status: "live"    },
+              { label: "Native Instagram",       status: "q3-2026" },
+              { label: "WhatsApp",               status: "roadmap" },
+            ].map((ch) => (
+              <span
+                key={ch.label}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                  ch.status === "live"
+                    ? "border-[var(--brand)]/30 bg-[var(--brand)]/10 text-[var(--brand)]"
+                    : ch.status === "q3-2026"
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                    : "border-[var(--border)] bg-[var(--bg-2)] text-[var(--text-3)]",
+                )}
+              >
+                <span className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  ch.status === "live" ? "bg-[var(--brand)]" :
+                  ch.status === "q3-2026" ? "bg-amber-400" : "bg-[var(--text-3)]",
+                )} />
+                {ch.label}
+                {ch.status === "live"    && <span className="opacity-70">· Live</span>}
+                {ch.status === "q3-2026" && <span className="opacity-70">· Q3 2026</span>}
+                {ch.status === "roadmap" && <span className="opacity-70">· Roadmap</span>}
+              </span>
+            ))}
+          </div>
 
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Link

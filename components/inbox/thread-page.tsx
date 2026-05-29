@@ -40,6 +40,7 @@ type ApiData = {
 };
 
 export function ThreadPage({ orgId, convId, orgSlug }: Props) {
+  // orgSlug is passed through so ThreadView can build the back-to-inbox link
   const router = useRouter();
   const [data,       setData]       = React.useState<ApiData | null>(null);
   const [status,     setStatus]     = React.useState<"loading" | "ok" | "gone" | "error">("loading");
@@ -114,6 +115,7 @@ export function ThreadPage({ orgId, convId, orgSlug }: Props) {
   return (
     <ThreadView
       orgId={orgId}
+      orgSlug={orgSlug}
       convId={convId}
       lead={lead}
       initialMessages={messages}

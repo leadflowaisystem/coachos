@@ -55,12 +55,26 @@ export function PricingCards({ onSelect, currentPlan, loading }: PricingCardsPro
             </div>
 
             <ul className="mb-8 flex-1 space-y-2.5">
-              {PLAN_FEATURES[plan]?.map((f) => (
-                <li key={f} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand)]" />
-                  {f}
-                </li>
-              ))}
+              {PLAN_FEATURES[plan]?.map((f) => {
+                const isComing = f.toLowerCase().includes("coming");
+                return (
+                  <li key={f} className={cn(
+                    "flex items-start gap-2 text-sm",
+                    isComing ? "text-[var(--text-3)]" : "text-[var(--text-2)]",
+                  )}>
+                    <Check className={cn(
+                      "mt-0.5 h-4 w-4 shrink-0",
+                      isComing ? "text-[var(--text-3)]" : "text-[var(--brand)]",
+                    )} />
+                    <span className="flex-1">{f.replace(" — coming Q3 2026", "")}</span>
+                    {isComing && (
+                      <span className="ml-auto shrink-0 rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-3)]">
+                        Q3 2026
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
 
             {onSelect ? (

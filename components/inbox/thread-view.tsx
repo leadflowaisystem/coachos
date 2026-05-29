@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn }        from "@/lib/utils";
 import { Badge }     from "@/components/ui/badge";
@@ -13,6 +15,7 @@ import type { InboxMessage, InboxDraft, InboxLead } from "@/types/inbox";
 
 interface Props {
   orgId:        string;
+  orgSlug:      string;
   convId:       string;
   lead:         InboxLead | null;
   initialMessages: InboxMessage[];
@@ -60,7 +63,7 @@ function MessageBubble({ msg }: { msg: InboxMessage }) {
 }
 
 /* ── Thread view ── */
-export function ThreadView({ orgId, convId, lead, initialMessages, initialDraft }: Props) {
+export function ThreadView({ orgId, orgSlug, convId, lead, initialMessages, initialDraft }: Props) {
   const router   = useRouter();
   const [messages, setMessages] = React.useState<InboxMessage[]>(initialMessages);
   const [draft,    setDraft]    = React.useState<InboxDraft | null>(initialDraft);
@@ -70,6 +73,29 @@ export function ThreadView({ orgId, convId, lead, initialMessages, initialDraft 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  // Poll every 3 s to pick up Inngest-inserted messages (booking confirm,
+  // payment link, AI drafts, etc.) without requiring a manual refresh.
+  React.useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/orgs/${orgId}/conversations/${convId}`);
+        if (!res.ok) return;
+        const json = await res.json() as { messages?: InboxMessage[]; pendingDraft?: InboxDraft | null };
+        const fresh = json.messages ?? [];
+        setMessages((prev) => {
+          if (fresh.length > prev.length) return fresh;
+          return prev;
+        });
+        // Surface a newly-arrived pending draft
+        if (json.pendingDraft && !draft) {
+          setDraft(json.pendingDraft);
+        }
+      } catch { /* non-fatal — ignore network hiccup */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, convId]);
 
   function handleDraftDone(newMsg?: { id: string; content: string; sent_at: string; direction: "outbound" }) {
     setDraft(null);
@@ -92,6 +118,14 @@ export function ThreadView({ orgId, convId, lead, initialMessages, initialDraft 
 
       {/* ── Thread header ── */}
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-1)] px-4">
+        {/* Mobile back button */}
+        <Link
+          href={`/org/${orgSlug}/inbox`}
+          className="md:hidden flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-3)] hover:bg-[var(--bg-3)] hover:text-[var(--text)] transition-colors"
+          aria-label="Back to inbox list"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-display text-sm font-semibold text-[var(--text)] truncate">

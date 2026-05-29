@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { AppShell } from "@/components/layout/app-shell";
 import { TrialExpiredModal } from "@/components/layout/trial-expired-modal";
+import { FirstRunOverlay } from "@/components/onboarding/first-run-overlay";
 
 interface Props {
   children: React.ReactNode;
@@ -92,6 +93,8 @@ export default async function OrgLayout({ children, params }: Props) {
         trialEndsAt={org.trial_ends_at ?? null}
         orgSlug={params.orgSlug}
       />
+      {/* First-run overlay — client component, auto-dismisses after localStorage flag is set */}
+      <FirstRunOverlay orgSlug={params.orgSlug} />
       {children}
     </AppShell>
   );
