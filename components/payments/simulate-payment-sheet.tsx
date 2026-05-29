@@ -88,8 +88,8 @@ export function SimulatePaymentSheet({ orgId, leads, pendingPayments, onDone }: 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "create", leadId, amountInr: amount, description }),
         });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j.error ?? "Failed");
+        const j = await res.json().catch(() => ({})) as { error?: string; step?: string; ok?: boolean };
+        if (!res.ok) throw new Error(j.step ? `[${j.step}] ${j.error ?? "Failed"}` : j.error ?? "Failed");
         setSuccess("Payment link created — payment.created event fired.");
         onDone();
 
@@ -100,8 +100,8 @@ export function SimulatePaymentSheet({ orgId, leads, pendingPayments, onDone }: 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: mode, paymentId }),
         });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j.error ?? "Failed");
+        const j = await res.json().catch(() => ({})) as { error?: string; step?: string; ok?: boolean };
+        if (!res.ok) throw new Error(j.step ? `[${j.step}] ${j.error ?? "Failed"}` : j.error ?? "Failed");
         setSuccess(
           mode === "capture"
             ? "Payment marked paid — lead stage set to won."
@@ -115,8 +115,8 @@ export function SimulatePaymentSheet({ orgId, leads, pendingPayments, onDone }: 
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j.error ?? "Failed");
+        const j = await res.json().catch(() => ({})) as { error?: string; step?: string; ok?: boolean };
+        if (!res.ok) throw new Error(j.step ? `[${j.step}] ${j.error ?? "Failed"}` : j.error ?? "Failed");
         setSuccess("Ghost revival sequence started — lead.ghost_revival event fired.");
         onDone();
       }

@@ -11,6 +11,13 @@ import { createPlatformSubscription, PLAN_IDS } from "@/lib/platform-billing";
 import { logAudit } from "@/lib/audit";
 
 export async function POST(req: NextRequest) {
+  // Dump plan ID env vars on every call so mismatches are immediately visible in logs
+  console.log("[billing/subscribe] env check:", {
+    starter: process.env.PLATFORM_PLAN_STARTER_ID ?? "(not set)",
+    growth:  process.env.PLATFORM_PLAN_GROWTH_ID  ?? "(not set)",
+    pro:     process.env.PLATFORM_PLAN_PRO_ID     ?? "(not set)",
+  });
+
   try {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
