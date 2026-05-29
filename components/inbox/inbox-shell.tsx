@@ -8,6 +8,7 @@ import { Switch }                    from "@/components/ui/switch";
 import { Button }                    from "@/components/ui/button";
 import { ConversationListPanel }     from "./conversation-list-panel";
 import { NewDmSheet }                from "./new-dm-sheet";
+import { RemovedToast }              from "./removed-toast";
 import { formatInr }                 from "@/lib/time";
 import { cn }                        from "@/lib/utils";
 import type { InboxConversation }    from "@/types/inbox";
@@ -55,9 +56,11 @@ export function InboxShell({
   return (
     // Full-bleed: cancel AppShell's p-6 padding so split pane reaches edges
     <div
-      className="-m-6 flex overflow-hidden bg-[var(--bg)]"
+      className="relative -m-6 flex overflow-hidden bg-[var(--bg)]"
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
+      {/* Soft toast when a stale convId redirects back here */}
+      <RemovedToast />
       {/* ── Left panel ────────────────────────────── */}
       <div className={cn(
         "flex w-[300px] shrink-0 flex-col overflow-hidden border-r border-[var(--border)]",
