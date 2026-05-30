@@ -52,7 +52,10 @@ export function CalSettingsForm({ orgId, orgSlug, initialCalLink }: Props) {
   return (
     <form onSubmit={handleSave} className="space-y-4">
       <div className="space-y-1.5">
-        <Label htmlFor="cal-link">Your Cal.com booking URL</Label>
+        <Label htmlFor="cal-link">
+          Your Cal.com booking URL{" "}
+          <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+        </Label>
         <div className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4 shrink-0 text-[var(--text-3)]" />
           <Input

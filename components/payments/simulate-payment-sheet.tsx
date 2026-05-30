@@ -180,7 +180,7 @@ export function SimulatePaymentSheet({ orgId, leads, pendingPayments, onDone }: 
           {mode === "create" && (
             <>
               <div className="space-y-1.5">
-                <Label>Lead</Label>
+                <Label>Lead <span className="text-[var(--brand)] font-medium">*</span></Label>
                 {leads.length === 0 ? (
                   <p className="text-xs text-[var(--text-3)]">No leads yet — send a test DM first.</p>
                 ) : (
@@ -197,7 +197,7 @@ export function SimulatePaymentSheet({ orgId, leads, pendingPayments, onDone }: 
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="sim-amount">Amount (₹)</Label>
+                <Label htmlFor="sim-amount">Amount (₹) <span className="text-[var(--brand)] font-medium">*</span></Label>
                 <div className="relative">
                   <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-3)]" />
                   <Input
@@ -211,7 +211,9 @@ export function SimulatePaymentSheet({ orgId, leads, pendingPayments, onDone }: 
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="sim-desc">Description</Label>
+                <Label htmlFor="sim-desc">
+                  Description <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+                </Label>
                 <Input
                   id="sim-desc"
                   value={description}

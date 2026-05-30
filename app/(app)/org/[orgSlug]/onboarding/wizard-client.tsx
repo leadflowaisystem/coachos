@@ -383,7 +383,10 @@ function StepOrgInfo({ data, set }: { data: WizardData; set: SetFn }) {
     >
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="w-name">Workspace name</Label>
+          <Label htmlFor="w-name">
+            Workspace name{" "}
+            <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+          </Label>
           <Input
             id="w-name"
             value={data.orgName}
@@ -536,7 +539,10 @@ function StepCalcom({ data, set }: { data: WizardData; set: SetFn }) {
             className="space-y-3 overflow-hidden"
           >
             <div className="space-y-1.5">
-              <Label htmlFor="cal-key">Cal.com API Key</Label>
+              <Label htmlFor="cal-key">
+                Cal.com API Key{" "}
+                <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+              </Label>
               <Input
                 id="cal-key"
                 type="password"
@@ -549,7 +555,10 @@ function StepCalcom({ data, set }: { data: WizardData; set: SetFn }) {
               </p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="cal-booking-url">Booking Page URL</Label>
+              <Label htmlFor="cal-booking-url">
+                Booking Page URL{" "}
+                <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+              </Label>
               <Input
                 id="cal-booking-url"
                 value={data.calBookingUrl}
@@ -591,7 +600,10 @@ function StepRazorpay({ data, set }: { data: WizardData; set: SetFn }) {
             className="space-y-3 overflow-hidden"
           >
             <div className="space-y-1.5">
-              <Label htmlFor="rp-id">Key ID</Label>
+              <Label htmlFor="rp-id">
+                Key ID{" "}
+                <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+              </Label>
               <Input
                 id="rp-id"
                 value={data.razorpayKeyId}
@@ -600,7 +612,10 @@ function StepRazorpay({ data, set }: { data: WizardData; set: SetFn }) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rp-secret">Key Secret</Label>
+              <Label htmlFor="rp-secret">
+                Key Secret{" "}
+                <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+              </Label>
               <Input
                 id="rp-secret"
                 type="password"

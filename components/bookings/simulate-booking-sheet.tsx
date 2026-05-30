@@ -144,7 +144,7 @@ export function SimulateBookingSheet({ orgId, leads, onDone }: Props) {
 
           {/* Lead picker */}
           <div className="space-y-1.5">
-            <Label>Lead / attendee</Label>
+            <Label>Lead / attendee <span className="text-[var(--brand)] font-medium">*</span></Label>
             {leads.length === 0 ? (
               <div className="rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] p-4 text-xs text-[var(--text-3)] text-center">
                 No leads yet — send a test DM first from the Inbox.
@@ -168,7 +168,7 @@ export function SimulateBookingSheet({ orgId, leads, onDone }: Props) {
 
           {/* Meeting time */}
           <div className="space-y-1.5">
-            <Label htmlFor="sim-starts-at">Meeting time</Label>
+            <Label htmlFor="sim-starts-at">Meeting time <span className="text-[var(--brand)] font-medium">*</span></Label>
             <Input
               id="sim-starts-at"
               type="datetime-local"
@@ -185,7 +185,9 @@ export function SimulateBookingSheet({ orgId, leads, onDone }: Props) {
 
           {/* Attendee name */}
           <div className="space-y-1.5">
-            <Label htmlFor="sim-attendee-name">Attendee name</Label>
+            <Label htmlFor="sim-attendee-name">
+              Attendee name <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+            </Label>
             <Input
               id="sim-attendee-name"
               value={attendeeName}

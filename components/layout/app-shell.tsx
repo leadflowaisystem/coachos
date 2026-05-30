@@ -255,17 +255,27 @@ export function AppShell({
             />
             <motion.aside
               key="mobile-sidebar"
-              initial={{ x: -220 }}
+              initial={{ x: -260 }}
               animate={{ x: 0 }}
-              exit={{ x: -220 }}
+              exit={{ x: -260 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="fixed inset-y-0 left-0 z-50 w-[220px] flex flex-col border-r border-[var(--border)] bg-[var(--bg-1)] md:hidden"
+              className="fixed inset-y-0 left-0 z-50 w-[260px] flex flex-col border-r border-[var(--border)] bg-[var(--bg-1)] md:hidden"
             >
-              <div className="flex h-14 items-center gap-2 px-4">
-                <Zap className="h-4 w-4 text-[var(--brand)]" />
-                <span className="font-display font-semibold text-sm text-[var(--text)]">
-                  {orgName ?? "CoachOS"}
-                </span>
+              {/* Sidebar header */}
+              <div className="flex h-14 items-center justify-between gap-2 px-4 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Zap className="h-4 w-4 text-[var(--brand)] shrink-0" />
+                  <span className="font-display font-semibold text-sm text-[var(--text)] truncate">
+                    {orgName ?? "CoachOS"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setMobileOpen(false)}
+                  aria-label="Close menu"
+                  className="h-9 w-9 flex items-center justify-center shrink-0 rounded-[var(--radius-sm)] text-[var(--text-3)] hover:bg-[var(--bg-3)] hover:text-[var(--text)] transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
               </div>
               <Separator />
               <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -301,6 +311,16 @@ export function AppShell({
                   );
                 })}
               </nav>
+              {/* Sign out at bottom of mobile sidebar */}
+              <div className="p-2 border-t border-[var(--border)]">
+                <button
+                  onClick={() => { setMobileOpen(false); handleSignOut(); }}
+                  className="flex w-full items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-sm text-[var(--text-3)] hover:bg-[var(--bg-3)] hover:text-[var(--text)] transition-colors"
+                >
+                  <LogOut className="h-4 w-4 shrink-0" />
+                  Sign out
+                </button>
+              </div>
             </motion.aside>
           </>
         )}
@@ -317,7 +337,7 @@ export function AppShell({
           {/* Left: hamburger (mobile) + org switcher */}
           <div className="flex items-center gap-3 min-w-0">
             <button
-              className="md:hidden shrink-0 text-[var(--text-3)] hover:text-[var(--text)] transition-colors"
+              className="md:hidden shrink-0 flex h-11 w-11 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-3)] hover:bg-[var(--bg-3)] hover:text-[var(--text)] transition-colors"
               onClick={() => setMobileOpen(true)}
               aria-label="Open menu"
             >
@@ -348,7 +368,7 @@ export function AppShell({
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {children}
         </main>
       </div>

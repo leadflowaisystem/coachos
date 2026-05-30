@@ -96,7 +96,10 @@ export function VoiceProfileForm({ orgId, orgSlug, initial }: Props) {
 
         {/* Tone */}
         <div className="space-y-1.5">
-          <Label>Communication tone</Label>
+          <Label>
+            Communication tone{" "}
+            <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+          </Label>
           <Select value={form.tone} onValueChange={(v) => set("tone", v)}>
             <SelectTrigger>
               <SelectValue placeholder="Choose tone…" />
@@ -111,7 +114,10 @@ export function VoiceProfileForm({ orgId, orgSlug, initial }: Props) {
 
         {/* Offer */}
         <div className="space-y-1.5">
-          <Label htmlFor="vf-offer">What do you offer?</Label>
+          <Label htmlFor="vf-offer">
+            What do you offer?{" "}
+            <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+          </Label>
           <Textarea
             id="vf-offer"
             rows={2}
@@ -123,7 +129,10 @@ export function VoiceProfileForm({ orgId, orgSlug, initial }: Props) {
 
         {/* Price range */}
         <div className="space-y-1.5">
-          <Label htmlFor="vf-price">Price range</Label>
+          <Label htmlFor="vf-price">
+            Price range{" "}
+            <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+          </Label>
           <Input
             id="vf-price"
             value={form.price_range}
@@ -134,7 +143,10 @@ export function VoiceProfileForm({ orgId, orgSlug, initial }: Props) {
 
         {/* What you solve */}
         <div className="space-y-1.5">
-          <Label htmlFor="vf-sells">What problem do you solve?</Label>
+          <Label htmlFor="vf-sells">
+            What problem do you solve?{" "}
+            <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+          </Label>
           <Textarea
             id="vf-sells"
             rows={2}
@@ -146,7 +158,10 @@ export function VoiceProfileForm({ orgId, orgSlug, initial }: Props) {
 
         {/* Objections */}
         <div className="space-y-2">
-          <Label>Common objections</Label>
+          <Label>
+            Common objections{" "}
+            <span className="text-xs font-normal text-[var(--text-3)]">(optional)</span>
+          </Label>
           <div className="flex gap-2">
             <Input
               value={objInput}

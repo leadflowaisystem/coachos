@@ -77,9 +77,9 @@ export function InboxShell({
   const pct = isUnlimited ? 0 : Math.min(100, Math.round((monthlyAiMsgCount / Math.max(aiMsgsPerMonth, 1)) * 100));
 
   return (
-    // Full-bleed: cancel AppShell's p-6 padding so split pane reaches edges
+    // Full-bleed: cancel AppShell's p-4 md:p-6 padding so split pane reaches edges
     <div
-      className="relative -m-6 flex overflow-hidden bg-[var(--bg)]"
+      className="relative -m-4 md:-m-6 flex overflow-hidden bg-[var(--bg)]"
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
       {/* Soft toast when a stale convId redirects back here */}

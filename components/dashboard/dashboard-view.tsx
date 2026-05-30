@@ -221,7 +221,7 @@ export function DashboardView({ initialData, orgId, isDev }: Props) {
       </div>
 
       {/* ── Hero revenue tiles ───────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:grid-cols-4">
         <HeroTile
           label="Total collected"
           value={revenue.paid}
