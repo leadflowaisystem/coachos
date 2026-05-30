@@ -56,7 +56,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   const parsed = VoiceSchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.errors[0]?.message ?? "Invalid input" },
+      { error: parsed.error.issues?.[0]?.message ?? "Invalid input" },
       { status: 400 }
     );
   }

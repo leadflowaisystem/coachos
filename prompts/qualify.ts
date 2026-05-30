@@ -8,6 +8,21 @@
  *   {"score":"hot|warm|cold","stage":"hot|warm|cold","reasoning":"one short sentence"}
  */
 
+/**
+ * Strip prompt injection attempts from user-supplied text before sending to the LLM.
+ * Removes patterns like "ignore previous instructions", triple-backtick fences, and
+ * inline code blocks that could break structured output.
+ */
+function sanitize(text: string): string {
+  return text
+    .replace(/`{3}[\s\S]*?`{3}/g, "[code block removed]")   // triple-backtick fences
+    .replace(/`/g, "'")                                        // inline backticks
+    .replace(/"{3}/g, "'''")                                   // triple-double-quotes
+    .replace(/ignore\s+(all\s+)?(previous|prior|above|system)\s+instructions?/gi, "[filtered]")
+    .replace(/forget\s+everything\s+(I\s+said|above|prior)/gi, "[filtered]")
+    .replace(/you\s+are\s+now\s+(a|an)\s+/gi, "[filtered] ");
+}
+
 export interface QualifyInput {
   messages: Array<{ direction: "inbound" | "outbound"; content: string }>;
   voiceProfile: {
@@ -72,17 +87,17 @@ DM: "I've struggled to lose weight for 2 years and saw your transformation. How 
   // Build the user turn: show the last inbound DM prominently,
   // prepend earlier context if the conversation has multiple turns.
   const inbound = input.messages.filter((m) => m.direction === "inbound");
-  const lastDm  = inbound[inbound.length - 1]?.content ?? "(no message)";
+  const lastDm  = sanitize(inbound[inbound.length - 1]?.content ?? "(no message)");
 
   let user: string;
   if (input.messages.length <= 1) {
-    user = `DM: "${lastDm}"`;
+    user = `USER MESSAGE TO ANALYZE:\n"""\n${lastDm}\n"""`;
   } else {
     const history = input.messages
       .slice(0, -1)
-      .map((m) => `${m.direction === "inbound" ? "LEAD" : "COACH"}: ${m.content}`)
+      .map((m) => `${m.direction === "inbound" ? "LEAD" : "COACH"}: ${sanitize(m.content)}`)
       .join("\n");
-    user = `Previous context:\n${history}\n\nLatest DM: "${lastDm}"`;
+    user = `Previous context:\n${history}\n\nUSER MESSAGE TO ANALYZE:\n"""\n${lastDm}\n"""`;
   }
 
   return { system, user };

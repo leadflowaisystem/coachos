@@ -1,63 +1,104 @@
 /**
- * Rate limiting — in-memory sliding window.
+ * Rate limiting — Upstash Redis when env vars are present, in-memory fallback otherwise.
  *
- * ┌─────────────────────────────────────────────────────────────────────┐
- * │ TODO: Upgrade to Upstash Redis when reaching ~50 active orgs       │
- * │                                                                     │
- * │ The in-memory store resets on every Vercel cold-start. On a        │
- * │ single-instance deployment (typical for early-stage) it works      │
- * │ fine. Once you have multiple concurrent instances or sustained      │
- * │ traffic, move to Upstash:                                           │
- * │                                                                     │
- * │   1. Sign up at upstash.com → create a Redis DB (free tier =       │
- * │      10 k commands/day, enough for ~50 active orgs)                │
- * │   2. Add env vars:                                                  │
- * │        UPSTASH_REDIS_REST_URL=https://...upstash.io                │
- * │        UPSTASH_REDIS_REST_TOKEN=AXxx...                             │
- * │   3. npm install @upstash/redis @upstash/ratelimit                 │
- * │   4. Swap the implementation below with:                            │
- * │                                                                     │
- * │      import { Redis } from "@upstash/redis";                       │
- * │      import { Ratelimit } from "@upstash/ratelimit";               │
- * │      const redis = new Redis({...});                                │
- * │      const rl = new Ratelimit({                                    │
- * │        redis,                                                        │
- * │        limiter: Ratelimit.slidingWindow(30, "1 m"),                 │
- * │      });                                                             │
- * │      export async function rateLimit(id: string) {                  │
- * │        const { success, remaining } = await rl.limit(id);           │
- * │        return { allowed: success, remaining };                       │
- * │      }                                                               │
- * │                                                                     │
- * │ See docs/SCALE.md for the full migration guide.                    │
- * └─────────────────────────────────────────────────────────────────────┘
+ * Upstash setup (free tier — 10k commands/day, sufficient for ~100 active orgs):
+ *   1. Sign up at upstash.com → create a Redis database
+ *   2. Add to Vercel env vars (and .env.local for dev):
+ *        UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+ *        UPSTASH_REDIS_REST_TOKEN=AXxx...
+ *   3. That's it. This module auto-detects and switches to Upstash.
+ *
+ * See docs/SETUP.md for full guide.
+ *
+ * ┌────────────────────────────────────────────────────────────┐
+ * │ TODO: Switch to Upstash when reaching ~50 active orgs.    │
+ * │ The in-memory store resets on cold-start (non-critical    │
+ * │ at low scale). See docs/SCALE.md for upgrade guide.       │
+ * └────────────────────────────────────────────────────────────┘
  */
 
-interface Window {
-  count:   number;
-  resetAt: number;
+/* ── In-memory fallback ──────────────────────────────────────── */
+interface Window { count: number; resetAt: number }
+const store = new Map<string, Window>();
+
+function inMemoryLimit(id: string, limit: number, windowMs: number) {
+  const now      = Date.now();
+  const existing = store.get(id);
+  if (!existing || now > existing.resetAt) {
+    store.set(id, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: limit - 1 };
+  }
+  existing.count++;
+  return { allowed: existing.count <= limit, remaining: Math.max(0, limit - existing.count) };
 }
 
-const store = new Map<string, Window>();
-const DEFAULT_LIMIT  = 30;
-const DEFAULT_WINDOW = 60_000; // 1 minute
+/* ── Upstash sliding-window (lazy-initialised) ───────────────── */
+let upstashLimiters: Map<string, unknown> | null = null;
+let upstashReady    = false;
 
+async function getUpstashLimiter(limit: number) {
+  const url   = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+
+  try {
+    const { Redis }     = await import("@upstash/redis");
+    const { Ratelimit } = await import("@upstash/ratelimit");
+
+    if (!upstashLimiters) {
+      upstashLimiters = new Map();
+      upstashReady    = true;
+    }
+
+    const key = String(limit);
+    if (!upstashLimiters.has(key)) {
+      const redis = new Redis({ url, token });
+      upstashLimiters.set(key, new Ratelimit({
+        redis,
+        limiter:   Ratelimit.slidingWindow(limit, "1 m"),
+        prefix:    "coachos:rl",
+        analytics: false,
+      }));
+    }
+    return upstashLimiters.get(key) as { limit: (id: string) => Promise<{ success: boolean; remaining: number }> };
+  } catch {
+    return null;
+  }
+}
+
+/* ── Public API ──────────────────────────────────────────────── */
+
+const DEFAULT_LIMIT  = 30;
+const DEFAULT_WINDOW = 60_000;
+
+/**
+ * Rate limit an identifier. Async — uses Upstash when configured, falls back to in-memory.
+ */
+export async function rateLimitAsync(
+  identifier: string,
+  { limit = DEFAULT_LIMIT }: { limit?: number } = {}
+): Promise<{ allowed: boolean; remaining: number }> {
+  const limiter = await getUpstashLimiter(limit);
+  if (limiter) {
+    try {
+      const { success, remaining } = await limiter.limit(identifier);
+      return { allowed: success, remaining };
+    } catch {
+      // Upstash hiccup — fall through to in-memory
+    }
+  }
+  return inMemoryLimit(identifier, limit, DEFAULT_WINDOW);
+}
+
+/**
+ * Synchronous in-memory rate limit. Use this only when the route can't be async.
+ * Prefer rateLimitAsync() for all new routes.
+ */
 export function rateLimit(
   identifier: string,
   { limit = DEFAULT_LIMIT, windowMs = DEFAULT_WINDOW }: { limit?: number; windowMs?: number } = {}
 ): { allowed: boolean; remaining: number } {
-  const now      = Date.now();
-  const existing = store.get(identifier);
-
-  if (!existing || now > existing.resetAt) {
-    store.set(identifier, { count: 1, resetAt: now + windowMs });
-    return { allowed: true, remaining: limit - 1 };
-  }
-
-  existing.count++;
-  const allowed   = existing.count <= limit;
-  const remaining = Math.max(0, limit - existing.count);
-  return { allowed, remaining };
+  return inMemoryLimit(identifier, limit, windowMs);
 }
 
 /** Extract the real IP from Next.js request headers. */

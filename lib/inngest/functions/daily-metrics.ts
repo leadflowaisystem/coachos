@@ -8,6 +8,7 @@
 
 import { inngest } from "../client";
 import { createServiceClient } from "@/lib/supabase/server";
+import { logAudit } from "@/lib/audit";
 
 export const aggregateDailyMetrics = inngest.createFunction(
   { id: "aggregate-daily-metrics", name: "Aggregate daily metrics", retries: 2 },
@@ -25,13 +26,60 @@ export const aggregateDailyMetrics = inngest.createFunction(
       return (data ?? []) as { id: string }[];
     });
 
+    // ── 1. Expire trials that ended before today ──────────────
+    const expiredCount = await step.run("expire-trials", async () => {
+      const svc = createServiceClient();
+      const now = new Date().toISOString();
+      const { data: expiring } = await svc
+        .from("orgs")
+        .select("id")
+        .eq("plan", "trial")
+        .lt("trial_ends_at", now);
+
+      const ids = (expiring ?? []).map((o: { id: string }) => o.id);
+      if (ids.length === 0) return 0;
+
+      // Mark them as trial_expired (keep plan=trial so we know they had a trial;
+      // the modal checks isTrialExpired which is date-based)
+      // We just need to audit-log these for observability
+      for (const id of ids) {
+        await logAudit(svc, id, null, "billing.trial_expired", { expired_at: now });
+      }
+      return ids.length;
+    });
+
+    // ── 2. Convert past_due > 7 days to cancelled ─────────────
+    const cancelledCount = await step.run("cancel-past-due", async () => {
+      const svc = createServiceClient();
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+      const { data: pastDue } = await svc
+        .from("orgs")
+        .select("id")
+        .eq("subscription_status", "past_due")
+        .lt("current_period_end", sevenDaysAgo);
+
+      const ids = (pastDue ?? []).map((o: { id: string }) => o.id);
+      if (ids.length === 0) return 0;
+
+      await svc.from("orgs").update({
+        plan:                "cancelled",
+        subscription_status: "cancelled",
+      }).in("id", ids);
+
+      for (const id of ids) {
+        await logAudit(svc, id, null, "billing.auto_cancelled", { reason: "past_due_7d" });
+      }
+      return ids.length;
+    });
+
+    // ── 3. Aggregate daily metrics ─────────────────────────────
     for (const org of orgs) {
       await step.run(`metrics-${org.id}-${dateStr}`, () =>
         aggregateOrg(org.id, dateStr, dayStart, dayEnd)
       );
     }
 
-    return { date: dateStr, orgs: orgs.length };
+    return { date: dateStr, orgs: orgs.length, expiredTrials: expiredCount, autoCancelled: cancelledCount };
   }
 );
 

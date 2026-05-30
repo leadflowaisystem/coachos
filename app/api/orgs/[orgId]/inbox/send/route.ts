@@ -44,7 +44,7 @@ export const POST = withErrorHandler("inbox/send", async (req: NextRequest, { pa
   const parsed = SendSchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.errors[0]?.message ?? "Invalid input" },
+      { error: parsed.error.issues?.[0]?.message ?? "Invalid input" },
       { status: 400 }
     );
   }

@@ -17,6 +17,7 @@ import { buildBookingConfirmPrompt } from "@/prompts/booking-confirm";
 import { buildPaymentLinkPrompt }    from "@/prompts/payment-link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { isTrialExpired, getPlanLimits } from "@/lib/plan";
+import { getAccessState }               from "@/lib/access";
 
 // ── Plan-gating error ─────────────────────────────────────────────
 export class AiBlockedError extends Error {
@@ -36,7 +37,7 @@ async function assertAiNotBlocked(orgId: string): Promise<void> {
 
   const { data } = await service
     .from("orgs")
-    .select("plan, trial_ends_at, monthly_ai_msg_count, ai_msgs_reset_at")
+    .select("plan, trial_ends_at, monthly_ai_msg_count, ai_msgs_reset_at, subscription_status")
     .eq("id", orgId)
     .single();
 
@@ -47,6 +48,7 @@ async function assertAiNotBlocked(orgId: string): Promise<void> {
     trial_ends_at: string | null;
     monthly_ai_msg_count: number;
     ai_msgs_reset_at: string;
+    subscription_status: string;
   };
 
   // Auto-reset when month rolls over
@@ -60,19 +62,16 @@ async function assertAiNotBlocked(orgId: string): Promise<void> {
     return; // Fresh month — not blocked
   }
 
-  // Check plan limits
-  if (isTrialExpired(org.plan, org.trial_ends_at)) {
-    throw new AiBlockedError("trial_expired");
-  }
+  // Use canonical access state for consistent gating
+  const access = await getAccessState(orgId);
 
-  const limits = getPlanLimits(org.plan);
-
-  if (limits.aiMsgsPerMonth === 0) {
-    throw new AiBlockedError("cancelled");
-  }
-
-  if (limits.aiMsgsPerMonth !== -1 && org.monthly_ai_msg_count >= limits.aiMsgsPerMonth) {
-    throw new AiBlockedError("limit_reached");
+  if (!access.canSendAi) {
+    const reason = access.reason ?? "cancelled";
+    throw new AiBlockedError(
+      reason === "trial_expired" ? "trial_expired" :
+      reason === "limit_reached" ? "limit_reached" :
+      "cancelled"
+    );
   }
 
   // Increment counter (pre-charge before the API call to avoid over-usage on retries)

@@ -4,6 +4,16 @@
  * The LLM must return ONLY the reply text — no labels, no JSON, no commentary.
  */
 
+function sanitize(text: string): string {
+  return text
+    .replace(/`{3}[\s\S]*?`{3}/g, "[code block removed]")
+    .replace(/`/g, "'")
+    .replace(/"{3}/g, "'''")
+    .replace(/ignore\s+(all\s+)?(previous|prior|above|system)\s+instructions?/gi, "[filtered]")
+    .replace(/forget\s+everything\s+(I\s+said|above|prior)/gi, "[filtered]")
+    .replace(/you\s+are\s+now\s+(a|an)\s+/gi, "[filtered] ");
+}
+
 export interface DraftInput {
   messages: Array<{ direction: "inbound" | "outbound"; content: string }>;
   voiceProfile: {
@@ -131,7 +141,7 @@ export function buildDraftPrompt(input: DraftInput): {
 
   // ── Transcript ────────────────────────────────────────────────
   const transcript = input.messages
-    .map((m) => `${m.direction === "inbound" ? "LEAD" : "COACH"}: ${m.content}`)
+    .map((m) => `${m.direction === "inbound" ? "LEAD" : "COACH"}: ${sanitize(m.content)}`)
     .join("\n");
 
   const user = `Conversation so far:\n${transcript}\n\nWrite the coach's next reply:`;

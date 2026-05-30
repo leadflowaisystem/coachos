@@ -21,7 +21,7 @@ export default async function OrgLayout({ children, params }: Props) {
   // Verify org exists and user is a member
   const { data: orgData } = await supabase
     .from("orgs")
-    .select("id, slug, name, onboarding_completed_at, plan, trial_ends_at")
+    .select("id, slug, name, onboarding_completed_at, plan, trial_ends_at, subscription_status")
     .eq("slug", params.orgSlug)
     .single();
 
@@ -32,6 +32,7 @@ export default async function OrgLayout({ children, params }: Props) {
     onboarding_completed_at: string | null;
     plan: string;
     trial_ends_at: string | null;
+    subscription_status: string | null;
   } | null;
 
   if (!org) notFound();
@@ -92,6 +93,7 @@ export default async function OrgLayout({ children, params }: Props) {
         plan={org.plan ?? "trial"}
         trialEndsAt={org.trial_ends_at ?? null}
         orgSlug={params.orgSlug}
+        subStatus={org.subscription_status ?? undefined}
       />
       {/* First-run overlay — client component, auto-dismisses after localStorage flag is set */}
       <FirstRunOverlay orgSlug={params.orgSlug} />
