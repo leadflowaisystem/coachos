@@ -173,16 +173,15 @@ export function LandingPage() {
           </div>
 
           <h1 className="font-display text-5xl font-bold leading-[1.1] tracking-tight text-[var(--text)] sm:text-6xl lg:text-7xl">
-            The revenue OS
+            Close 40% more leads
             <br />
-            <span className="text-[var(--brand)]">for coaches.</span>
+            <span className="text-[var(--brand)]">in 15 minutes a day.</span>
           </h1>
 
-          <p className="mx-auto mt-6 max-w-xl text-lg text-[var(--text-3)] leading-relaxed">
-            Stop losing leads to slow replies, no-shows, and payment ghosting.
-            CoachOS qualifies your DMs{" "}
-            <span className="text-[var(--text-2)]">(via ManyChat or your inbox)</span>,
-            books your calls, and chases your payments while you sleep.
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-[var(--text-3)] leading-relaxed">
+            The AI cockpit for coaches. Paste DMs or screenshot your inbox, get smart replies in your voice.
+            Cal.com, Razorpay, dunning, revival — all on autopilot.{" "}
+            <span className="text-[var(--text-2)]">No bots, no paid tools, no Meta approval needed.</span>
           </p>
 
           {/* Channel availability strip */}
@@ -268,27 +267,27 @@ export function LandingPage() {
         <div className="mx-auto max-w-5xl">
           <div className="mb-12 text-center">
             <h2 className="font-display text-3xl font-bold text-[var(--text)]">
-              One platform, three revenue streams
+              Three hours of DM work. Done in 15 minutes.
             </h2>
           </div>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             {[
               {
                 icon: MessageSquare,
-                title: "DM Qualification",
-                desc: "AI reads every inbound DM, scores leads 0-100, and drafts a reply in your exact voice — hot leads get your booking link automatically.",
+                title: "Process DMs 10× faster",
+                desc: "Screenshot your Instagram DM list, upload it. AI scores every lead 0-100 and drafts a reply in your voice — with your Cal.com link pre-embedded for hot leads.",
                 color: "text-[var(--brand)]",
               },
               {
                 icon: Calendar,
-                title: "Booking & Recovery",
-                desc: "Automated reminders cut no-shows by 60%. No-show recovery sequences re-engage missed calls. Every slot is either booked or recovered.",
+                title: "Auto-pilot back office",
+                desc: "Booking reminders, no-show recovery, payment dunning, ghost revival — every follow-up runs automatically. You close deals; CoachOS does the chasing.",
                 color: "text-blue-400",
               },
               {
                 icon: CreditCard,
-                title: "Payment Dunning",
-                desc: "Smart multi-step sequences chase unpaid invoices without awkward conversations. Revival nudges re-engage cold leads at the right moment.",
+                title: "Full funnel attribution",
+                desc: "See which IG post, reel, or story each lead came from. Track DM → booked → showed → paid with source attribution. Know what content makes money.",
                 color: "text-purple-400",
               },
             ].map((p) => (
@@ -350,6 +349,39 @@ export function LandingPage() {
             <p className="mt-2 text-[var(--text-3)]">14-day free trial on all plans. No card required.</p>
           </div>
           <PricingCards />
+        </div>
+      </section>
+
+      {/* ── WHY NOT MANYCHAT ── */}
+      <section className="px-6 py-16 border-t border-[var(--border)]">
+        <div className="mx-auto max-w-4xl">
+          <div className="mb-10 text-center">
+            <h2 className="font-display text-3xl font-bold text-[var(--text)]">
+              &ldquo;Why not just use ManyChat?&rdquo;
+            </h2>
+            <p className="mt-2 text-[var(--text-3)]">Fair question. Here&apos;s the honest comparison.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {[
+              { label: "ManyChat (free plan)", items: ["Keyword + story triggers only", "Sends pre-written scripts", "No lead scoring or CRM", "No booking or payment automation", "No funnel attribution", "Requires Meta Business approval for some features"], bad: true },
+              { label: "CoachOS Cockpit", items: ["Screenshot any DMs from any app", "AI drafts replies in your voice, per lead", "Lead scoring 0-100 with stage tracking", "Cal.com + Razorpay automation built-in", "Source attribution: which post made money", "No Meta approval, no API setup required"], bad: false },
+            ].map((col) => (
+              <div key={col.label} className={`rounded-[var(--radius-lg)] border p-5 space-y-3 ${col.bad ? "border-[var(--border)] bg-[var(--bg-2)]" : "border-[var(--brand)]/40 bg-[var(--brand)]/5"}`}>
+                <p className={`font-semibold text-sm ${col.bad ? "text-[var(--text-3)]" : "text-[var(--brand)]"}`}>{col.label}</p>
+                <ul className="space-y-2">
+                  {col.items.map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
+                      <span className={`mt-0.5 shrink-0 ${col.bad ? "text-[var(--text-3)]" : "text-[var(--brand)]"}`}>{col.bad ? "·" : "✓"}</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <p className="mt-6 text-center text-sm text-[var(--text-3)]">
+            CoachOS works alongside ManyChat — use ManyChat for free story/comment triggers, CoachOS for everything after the DM.
+          </p>
         </div>
       </section>
 

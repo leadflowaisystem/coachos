@@ -93,6 +93,24 @@ export interface Database {
         };
         Relationships: [];
       };
+      funnel_configs: {
+        Row:    { org_id: string; headline: string; subheadline: string; offer_desc: string; cta_text: string; photo_url: string | null; video_url: string | null; pricing_teaser: string | null; published: boolean; updated_at: string };
+        Insert: { org_id: string; headline?: string; subheadline?: string; offer_desc?: string; cta_text?: string; photo_url?: string | null; video_url?: string | null; pricing_teaser?: string | null; published?: boolean; updated_at?: string };
+        Update: { org_id?: string; headline?: string; subheadline?: string; offer_desc?: string; cta_text?: string; photo_url?: string | null; video_url?: string | null; pricing_teaser?: string | null; published?: boolean; updated_at?: string };
+        Relationships: [];
+      };
+      user_push_subscriptions: {
+        Row:    { id: string; org_id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: string };
+        Insert: { id?: string; org_id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at?: string };
+        Update: { id?: string; org_id?: string; user_id?: string; endpoint?: string; p256dh?: string; auth?: string; created_at?: string };
+        Relationships: [];
+      };
+      process_screenshots: {
+        Row:    { id: string; org_id: string; user_id: string | null; threads_found: number; drafts_generated: number; ai_calls_used: number; created_at: string };
+        Insert: { id?: string; org_id: string; user_id?: string | null; threads_found?: number; drafts_generated?: number; ai_calls_used?: number; created_at?: string };
+        Update: { id?: string; org_id?: string; user_id?: string | null; threads_found?: number; drafts_generated?: number; ai_calls_used?: number; created_at?: string };
+        Relationships: [];
+      };
       error_log: {
         Row: {
           id:            string;

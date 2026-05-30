@@ -17,8 +17,11 @@ const hankenGrotesk = Hanken_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "CoachOS",
-  description: "Revenue pipeline automation for Instagram coaches",
+  title: "CoachOS — AI Coach Cockpit",
+  description: "Close 40% more leads in 15 minutes a day. The AI cockpit for coaches.",
+  manifest: "/manifest.json",
+  themeColor: "#36E6A0",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "CoachOS" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -28,9 +31,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${bricolage.variable} ${hankenGrotesk.variable} ${GeistMono.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#36E6A0" />
+      </head>
       <body>
         {children}
         <Toaster />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{})}`,
+          }}
+        />
       </body>
     </html>
   );

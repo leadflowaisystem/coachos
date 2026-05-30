@@ -19,6 +19,7 @@ import {
   Mic,
   Check,
   Gift,
+  Camera,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -54,11 +55,12 @@ interface AppShellProps {
 
 /* ── Nav items — exactly per spec ── */
 const mainNav = [
-  { href: "inbox",     label: "Inbox",     icon: Inbox          },
-  { href: "bookings",  label: "Bookings",  icon: CalendarDays   },
-  { href: "payments",  label: "Payments",  icon: CreditCard     },
-  { href: "sequences", label: "Sequences", icon: GitBranch      },
-  { href: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "process",   label: "AI Cockpit", icon: Camera         },
+  { href: "inbox",     label: "Inbox",      icon: Inbox          },
+  { href: "bookings",  label: "Bookings",   icon: CalendarDays   },
+  { href: "payments",  label: "Payments",   icon: CreditCard     },
+  { href: "sequences", label: "Sequences",  icon: GitBranch      },
+  { href: "dashboard", label: "Dashboard",  icon: LayoutDashboard },
 ] as const;
 
 const bottomNav = [
