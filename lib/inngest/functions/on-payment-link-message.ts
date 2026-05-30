@@ -15,6 +15,8 @@ import { inngest } from "../client";
 import { createServiceClient } from "@/lib/supabase/server";
 import { generatePaymentLinkMessage } from "@/lib/ai";
 import { getLeadFirstName } from "@/lib/leads";
+import { sendEmail } from "@/lib/email";
+import { paymentLink as paymentLinkTemplate } from "@/lib/email-templates";
 
 interface PaymentLinkMessageData {
   orgId:        string;
@@ -73,7 +75,8 @@ export const onPaymentLinkMessage = inngest.createFunction(
         .eq("id", payment.lead_id)
         .single();
 
-      const lead = leadRes.data as { name: string | null; external_id: string | null } | null;
+      const lead = leadRes.data as { name: string | null; external_id: string | null; metadata?: Record<string, unknown> } | null;
+      const orgRes = await svc.from("orgs").select("name").eq("id", orgId).single();
 
       return {
         leadId:         payment.lead_id,
@@ -82,7 +85,9 @@ export const onPaymentLinkMessage = inngest.createFunction(
         paymentUrl:     payment.payment_link_url,
         leadName:       lead?.name       ?? null,
         leadExternalId: lead?.external_id ?? null,
+        leadEmail:      (lead?.metadata as Record<string, unknown> | undefined)?.email as string | undefined ?? null,
         voice:          voiceRes.data as { tone: string; offer: string } | null,
+        coachName:      (orgRes.data as { name: string } | null)?.name ?? "Your Coach",
       };
     });
 
@@ -138,6 +143,25 @@ export const onPaymentLinkMessage = inngest.createFunction(
       }).eq("id", ctx.conversationId);
 
       console.log(`[payment-link-msg] message inserted for conv ${ctx.conversationId}`);
+
+      // Send transactional email if lead has email
+      if (ctx.leadEmail) {
+        const firstName = getLeadFirstName({ name: ctx.leadName, external_id: ctx.leadExternalId });
+        const desc = description || ctx.voice?.offer || "the program";
+        await sendEmail({
+          to:       ctx.leadEmail,
+          subject:  "Your payment link is ready",
+          html:     paymentLinkTemplate({
+            leadName:    firstName,
+            amount:      `₹${ctx.amountInr.toLocaleString("en-IN")}`,
+            description: desc,
+            paymentUrl:  ctx.paymentUrl ?? "",
+            coachName:   ctx.coachName,
+          }),
+          orgId,
+          template: "paymentLink",
+        }).catch(() => null);
+      }
     });
 
     return { paymentId, conversationId: ctx.conversationId, sent: true };

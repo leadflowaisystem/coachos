@@ -1,7 +1,7 @@
 /**
  * /org/[slug]/settings/channel/manychat
- * Shows the per-org ManyChat webhook URL + secret token.
- * Coach pastes the webhook URL into ManyChat → External Request step.
+ * Guides coaches to use ManyChat free triggers to send leads to CoachOS funnel URL.
+ * No External Request, webhook, or paid ManyChat plan required.
  */
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
@@ -25,32 +25,14 @@ export default async function ManyChatSetupPage({ params }: Props) {
   const org = orgRow as { id: string; name: string };
 
   const svc = createServiceClient();
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://coachos-pi.vercel.app";
+  const funnelUrl = `${appUrl}/c/${params.orgSlug}`;
 
-  // Load or generate per-org ManyChat webhook secret
-  const { data: intRow } = await svc
-    .from("integrations")
-    .select("config, active")
-    .eq("org_id", org.id)
-    .eq("provider", "manychat")
-    .maybeSingle();
-
-  const config = (intRow?.config ?? {}) as { webhook_token?: string };
-
-  // Auto-generate a token if one doesn't exist yet
-  let webhookToken = config.webhook_token ?? "";
-  if (!webhookToken) {
-    webhookToken = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
-    await svc.from("integrations").upsert({
-      org_id:   org.id,
-      provider: "manychat",
-      config:   { webhook_token: webhookToken },
-      active:   false,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "org_id,provider" });
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://coachos.app";
-  const webhookUrl = `${appUrl}/api/webhooks/manychat/${org.id}`;
+  // Load Cal.com URL if connected
+  const { data: calRow } = await svc
+    .from("integrations").select("config")
+    .eq("org_id", org.id).eq("provider", "calcom").eq("active", true).maybeSingle();
+  const calUrl = ((calRow?.config as Record<string, string> | null)?.booking_url) ?? "";
 
   return (
     <div className="max-w-lg mx-auto space-y-6">
@@ -64,19 +46,16 @@ export default async function ManyChatSetupPage({ params }: Props) {
       </div>
 
       <div>
-        <h1 className="font-display text-2xl font-semibold text-[var(--text)]">ManyChat webhook</h1>
+        <h1 className="font-display text-2xl font-semibold text-[var(--text)]">ManyChat</h1>
         <p className="mt-1 text-sm text-[var(--text-3)]">
-          Paste these values into ManyChat → Automation → External Request to forward
-          subscriber DMs to CoachOS.
+          Use ManyChat free to capture leads from stories, comments, and keyword DMs.
         </p>
       </div>
 
       <ManyChatSetupClient
-        orgId={org.id}
         orgSlug={params.orgSlug}
-        webhookUrl={webhookUrl}
-        webhookToken={webhookToken}
-        isActive={!!intRow?.active}
+        funnelUrl={funnelUrl}
+        calUrl={calUrl}
       />
     </div>
   );

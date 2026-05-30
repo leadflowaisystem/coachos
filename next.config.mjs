@@ -27,6 +27,8 @@ const nextConfig = {
         "https://api.inngest.com",
         "https://api.razorpay.com",
         "https://api.brevo.com",
+        "https://*.upstash.io",
+        "https://smtp-relay.brevo.com",
       ].join(" "),
       "font-src 'self' data:",
       "frame-src https://api.razorpay.com",

@@ -11,6 +11,7 @@
 
 import { createServiceClient } from "@/lib/supabase/server";
 import { getPlanLimits }       from "@/lib/plan";
+import { cache }               from "@/lib/cache";
 
 export interface AccessState {
   status:                "trial_active" | "trial_expired" | "subscribed" | "cancelled" | "past_due";
@@ -129,6 +130,10 @@ function buildState(org: OrgRow): AccessState {
 }
 
 export async function getAccessState(orgId: string): Promise<AccessState> {
+  // Check 60-second cache first (Upstash when configured, in-memory fallback)
+  const cached = await cache.get<AccessState>(`access:${orgId}`);
+  if (cached) return cached;
+
   const svc = createServiceClient();
   const { data } = await svc
     .from("orgs")
@@ -153,7 +158,14 @@ export async function getAccessState(orgId: string): Promise<AccessState> {
     };
   }
 
-  return buildState(data as OrgRow);
+  const state = buildState(data as OrgRow);
+  await cache.set(`access:${orgId}`, state, 60);
+  return state;
+}
+
+/** Call this whenever the org's plan/status changes so stale cache is evicted. */
+export async function invalidateAccessCache(orgId: string): Promise<void> {
+  await cache.del(`access:${orgId}`);
 }
 
 export async function canOrgSendAi(orgId: string): Promise<boolean> {

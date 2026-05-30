@@ -20,24 +20,29 @@ async function assertMember(orgId: string) {
   return data ? user : null;
 }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const svc   = createServiceClient();
-  const orgId = params.orgId;
+  const svc    = createServiceClient();
+  const orgId  = params.orgId;
+  const cursor = req.nextUrl.searchParams.get("cursor");
+  const limit  = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? 50), 100);
+
+  let runsQuery = svc.from("sequence_runs")
+    .select(`
+      id, type, status, step_current, step_total, metadata,
+      started_at, updated_at, stopped_at,
+      lead:leads(id, name, avatar_url, stage, channel)
+    `)
+    .eq("org_id", orgId)
+    .order("started_at", { ascending: false })
+    .limit(limit + 1);
+
+  if (cursor) runsQuery = runsQuery.lt("started_at", cursor);
 
   const [runRes, inactiveRes] = await Promise.all([
-    // All sequence runs (active first, then recent)
-    svc.from("sequence_runs")
-      .select(`
-        id, type, status, step_current, step_total, metadata,
-        started_at, updated_at, stopped_at,
-        lead:leads(id, name, avatar_url, stage, channel)
-      `)
-      .eq("org_id", orgId)
-      .order("started_at", { ascending: false })
-      .limit(60),
+    runsQuery,
 
     // Inactive leads not currently in an active revival
     svc.from("leads")
@@ -64,10 +69,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     (l) => !activeRevivalLeadIds.has(l.id)
   );
 
+  const rows       = runRes.data ?? [];
+  const hasMore    = rows.length > limit;
+  const items      = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? items[items.length - 1]?.started_at ?? null : null;
+
   return NextResponse.json({
-    sequenceRuns: runRes.data ?? [],
+    sequenceRuns: items,
     inactiveLeads,
     inactiveDaysThreshold: INACTIVE_DAYS,
+    next_cursor: nextCursor,
   });
 }
 

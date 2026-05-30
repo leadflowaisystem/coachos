@@ -237,7 +237,7 @@ export function WizardClient({ orgId, orgSlug, orgName, userEmail }: Props) {
       body: JSON.stringify({ onboarding_completed_at: new Date().toISOString() }),
     });
     if (!r.ok) throw new Error((await r.json()).error ?? "Failed to complete onboarding");
-    router.push(`/org/${orgSlug}/health`);
+    router.push(`/org/${orgSlug}/process`);
   }
 
   const isLastStep = step === STEPS.length - 1;

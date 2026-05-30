@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { encryptSecret } from "@/lib/crypto";
+import { logAudit } from "@/lib/audit";
 
 interface Params { params: { orgId: string } }
 
@@ -146,6 +147,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (result.error) {
     return NextResponse.json({ error: result.error.message }, { status: 500 });
   }
+  void logAudit(service, params.orgId, user.id, "integration.update", { provider });
   return NextResponse.json({ integration: result.data });
 }
 

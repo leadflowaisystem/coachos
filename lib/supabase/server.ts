@@ -42,25 +42,22 @@ export function createClient() {
  * Service-role client — bypasses RLS entirely.
  * ONLY use in trusted server-side code (API routes, Inngest functions).
  *
- * When SUPABASE_DB_POOL_URL is set (Supabase Dashboard → Database →
- * Connection Pooling → Transaction mode, port 6543), we use it as the
- * db.pooler option to route through PgBouncer. This dramatically reduces
- * open connection count at scale without any behaviour change.
+ * NOTE on SUPABASE_DB_POOL_URL:
+ * The Supabase JS client uses HTTP/PostgREST — it does NOT open direct
+ * Postgres connections and therefore cannot use the port-6543 PgBouncer URL.
+ * SUPABASE_DB_POOL_URL is reserved for future direct-pg tooling (e.g.
+ * migration scripts using postgres-js). The JS client already benefits from
+ * Supabase's built-in HTTP connection pooling automatically.
  */
 export function createServiceClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  const poolerUrl   = process.env.SUPABASE_DB_POOL_URL;
-
   return createSupabaseClient<Database>(
-    supabaseUrl,
-    serviceKey,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
       },
-      ...(poolerUrl ? { db: { schema: "public" } } : {}),
     }
   );
 }

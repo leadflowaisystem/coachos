@@ -14,6 +14,8 @@ import { inngest } from "../client";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendChannelMessage, getCalLink } from "@/lib/booking";
 import { generateRevivalNudge } from "@/lib/ai";
+import { sendEmail } from "@/lib/email";
+import { revivalNudge as revivalNudgeTemplate } from "@/lib/email-templates";
 
 interface GhostRevivalData {
   orgId:          string;
@@ -45,7 +47,7 @@ export const onGhostRevival = inngest.createFunction(
     // ── Load context ─────────────────────────────────────────────
     const ctx = await step.run("load-revival-context", async () => {
       const svc = createServiceClient();
-      const [msgRes, voiceRes, calLinkRes] = await Promise.all([
+      const [msgRes, voiceRes, calLinkRes, leadRes, orgRes] = await Promise.all([
         svc.from("messages")
            .select("direction, content")
            .eq("conversation_id", conversationId)
@@ -56,15 +58,22 @@ export const onGhostRevival = inngest.createFunction(
            .eq("org_id", orgId)
            .single(),
         getCalLink(orgId),
+        svc.from("leads").select("name, metadata").eq("id", leadId).single(),
+        svc.from("orgs").select("name").eq("id", orgId).single(),
       ]);
 
+      const leadData = leadRes.data as { name: string | null; metadata?: Record<string, unknown> } | null;
       return {
         messages:    (msgRes.data ?? []) as { direction: "inbound" | "outbound"; content: string }[],
         voiceProfile: voiceRes.data as {
           tone: string; offer: string; sells: string;
           objections: string[]; extra_context: string;
         } | null,
-        calLink: calLinkRes,
+        calLink:    calLinkRes,
+        leadName:   leadData?.name ?? null,
+        leadEmail:  (leadData?.metadata as Record<string, unknown> | undefined)?.email as string | undefined ?? null,
+        coachName:  (orgRes.data as { name: string } | null)?.name ?? "Your Coach",
+        offer:      (voiceRes.data as { offer: string } | null)?.offer ?? "our coaching program",
       };
     });
 
@@ -130,6 +139,13 @@ export const onGhostRevival = inngest.createFunction(
     );
     await step.run("send-nudge-1", async () => {
       await sendChannelMessage(conversationId, orgId, nudge1.content, "system");
+      if (ctx.leadEmail) {
+        await sendEmail({
+          to: ctx.leadEmail, subject: "Checking in from your coach",
+          html: revivalNudgeTemplate({ leadName: ctx.leadName ?? "there", programName: ctx.offer, ctaUrl: ctx.calLink ?? "", coachName: ctx.coachName }),
+          orgId, template: "revivalNudge",
+        }).catch(() => null);
+      }
       await updateStep(1);
     });
 

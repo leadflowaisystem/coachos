@@ -21,18 +21,7 @@ export async function generateMetadata({ params }: Props) {
 export default async function CoachFunnelPage({ params }: Props) {
   const svc = createServiceClient();
 
-  const [orgRes, configRes] = await Promise.all([
-    svc.from("orgs").select("id, name, slug").eq("slug", params.coachSlug).single(),
-    svc.from("funnel_configs")
-       .select("headline, subheadline, offer_desc, cta_text, photo_url, video_url, pricing_teaser, published")
-       .eq("org_id",
-         svc.from("orgs").select("id").eq("slug", params.coachSlug).limit(1) as unknown as string
-       )
-       .maybeSingle(),
-  ]);
-
-  // Re-fetch config properly using org id
-  const orgRow = orgRes.data as { id: string; name: string; slug: string } | null;
+  const orgRow = (await svc.from("orgs").select("id, name, slug").eq("slug", params.coachSlug).single()).data as { id: string; name: string; slug: string } | null;
   if (!orgRow) notFound();
 
   const { data: cfgData } = await svc

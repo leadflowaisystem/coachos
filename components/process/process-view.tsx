@@ -56,7 +56,10 @@ function LeadCard({ t, orgSlug }: { t: ThreadResult; orgSlug: string }) {
             <p className="text-sm font-semibold text-[var(--text)] truncate">
               {t.detected_name}
             </p>
-            <p className="text-[11px] text-[var(--text-3)] truncate">@{t.detected_handle}</p>
+            <p className="text-[11px] text-[var(--text-3)] truncate">
+              @{t.detected_handle}
+              <span className="ml-1 opacity-50">(optional — edit if OCR misread)</span>
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">

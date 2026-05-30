@@ -21,12 +21,15 @@ async function assertMember(orgId: string) {
   return data ? user : null;
 }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const cursor = req.nextUrl.searchParams.get("cursor");
+  const limit  = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? 50), 100);
+
   const svc = createServiceClient();
-  const { data, error } = await svc
+  let query = svc
     .from("payments")
     .select(`
       id, status, amount_inr, payment_link_id, payment_link_url,
@@ -35,10 +38,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
     `)
     .eq("org_id", params.orgId)
     .order("created_at", { ascending: false })
-    .limit(100);
+    .limit(limit + 1);
 
+  if (cursor) query = query.lt("created_at", cursor);
+
+  const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ payments: data ?? [] });
+
+  const rows       = (data ?? []);
+  const hasMore    = rows.length > limit;
+  const items      = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? items[items.length - 1]?.created_at ?? null : null;
+
+  return NextResponse.json({ payments: items, next_cursor: nextCursor });
 }
 
 export async function POST(req: NextRequest, { params }: Params) {

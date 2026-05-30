@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
     }).eq("id", orgId);
 
     await logAudit(svc, orgId, user.id, "billing.subscribe_initiated", { plan, planId });
+    await logAudit(svc, orgId, user.id, "subscription.upgrade", { plan, previous: "trial" });
 
     return NextResponse.json({ shortUrl: result.shortUrl });
   } catch (err) {

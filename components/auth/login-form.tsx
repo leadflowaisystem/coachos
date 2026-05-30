@@ -60,7 +60,7 @@ export function LoginForm() {
       <form onSubmit={handleMagicLink} className="space-y-3">
         <div className="space-y-1">
           <label htmlFor="email" className="text-sm font-medium">
-            Email
+            Email <span className="text-[var(--brand)]">*</span>
           </label>
           <input
             id="email"

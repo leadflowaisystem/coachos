@@ -13,6 +13,8 @@ import { inngest } from "../client";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendChannelMessage } from "@/lib/booking";
 import { build24hReminder, build1hReminder } from "@/prompts/reminder";
+import { sendEmail } from "@/lib/email";
+import { bookingConfirmation, bookingReminder24h } from "@/lib/email-templates";
 
 interface BookingCreatedData {
   orgId:          string;
@@ -40,19 +42,20 @@ export const onBookingCreated = inngest.createFunction(
     // ── Load booking details + voice profile ───────────────────
     const ctx = await step.run("load-booking-context", async () => {
       const svc = createServiceClient();
-      const [bookingRes, leadRes, voiceRes] = await Promise.all([
+      const [bookingRes, leadRes, voiceRes, orgRes] = await Promise.all([
         svc.from("bookings")
            .select("attendee_name, meeting_url, starts_at")
            .eq("id", bookingId)
            .single(),
         svc.from("leads")
-           .select("name")
+           .select("name, metadata")
            .eq("id", leadId)
            .single(),
         svc.from("voice_profiles")
            .select("offer")
            .eq("org_id", orgId)
            .single(),
+        svc.from("orgs").select("name").eq("id", orgId).single(),
       ]);
 
       const booking = bookingRes.data as {
@@ -60,16 +63,35 @@ export const onBookingCreated = inngest.createFunction(
         meeting_url:   string | null;
         starts_at:     string | null;
       } | null;
+      const leadMeta = (leadRes.data as { name: string | null; metadata?: Record<string, unknown> } | null);
 
       return {
-        attendeeName: booking?.attendee_name
-          ?? (leadRes.data as { name: string | null } | null)?.name
-          ?? null,
+        attendeeName: booking?.attendee_name ?? leadMeta?.name ?? null,
         meetingUrl: booking?.meeting_url ?? null,
         startsAt:   booking?.starts_at ?? startsAt,
         offer:      (voiceRes.data as { offer: string } | null)?.offer ?? "",
+        leadEmail:  (leadMeta?.metadata as Record<string, unknown> | undefined)?.email as string | undefined ?? null,
+        coachName:  (orgRes.data as { name: string } | null)?.name ?? "Your Coach",
       };
     });
+
+    // ── Send booking confirmation email ───────────────────────
+    if (ctx.leadEmail) {
+      await step.run("send-confirmation-email", () =>
+        sendEmail({
+          to:       ctx.leadEmail!,
+          subject:  "Your call is confirmed! 🎉",
+          html:     bookingConfirmation({
+            leadName:    ctx.attendeeName ?? "there",
+            meetingTime: new Date(ctx.startsAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+            meetingUrl:  ctx.meetingUrl ?? "",
+            coachName:   ctx.coachName,
+          }),
+          orgId,
+          template: "bookingConfirmation",
+        }).catch(() => null)
+      );
+    }
 
     // ── Compute reminder target times ──────────────────────────
     const test24hMs = process.env.TEST_REMINDER_24H_MS
@@ -103,6 +125,20 @@ export const onBookingCreated = inngest.createFunction(
         coachOffer: ctx.offer,
       });
       await sendChannelMessage(conversationId, orgId, msg, "reminder_24h");
+      if (ctx.leadEmail) {
+        await sendEmail({
+          to:       ctx.leadEmail,
+          subject:  "Reminder: your call is tomorrow",
+          html:     bookingReminder24h({
+            leadName:    ctx.attendeeName ?? "there",
+            meetingTime: new Date(ctx.startsAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+            meetingUrl:  ctx.meetingUrl ?? "",
+            coachName:   ctx.coachName,
+          }),
+          orgId,
+          template: "bookingReminder24h",
+        }).catch(() => null);
+      }
       return { sent: true };
     });
 

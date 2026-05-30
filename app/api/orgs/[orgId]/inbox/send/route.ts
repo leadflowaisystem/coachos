@@ -11,9 +11,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
-import { rateLimit, getIp } from "@/lib/ratelimit";
+import { rateLimitAsync, getIp } from "@/lib/ratelimit";
 import { withErrorHandler } from "@/lib/api-handler";
 import { z } from "zod";
+import { sanitizeText } from "@/lib/sanitize";
 
 interface Params { params: { orgId: string } }
 
@@ -28,7 +29,7 @@ async function assertMember(orgId: string) {
 }
 
 export const POST = withErrorHandler("inbox/send", async (req: NextRequest, { params }: Params) => {
-  const { allowed } = rateLimit(`simulate:${getIp(req)}`, { limit: 30 });
+  const { allowed } = await rateLimitAsync(`inbox-send:${getIp(req)}`, { limit: 30 });
   if (!allowed) return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
 
   const user = await assertMember(params.orgId);
@@ -49,9 +50,9 @@ export const POST = withErrorHandler("inbox/send", async (req: NextRequest, { pa
     );
   }
 
-  const externalId = (parsed.data.senderHandle ?? "").trim() || `manual_${Date.now()}`;
-  const name       = (parsed.data.senderName   ?? "").trim() || externalId;
-  const content    = parsed.data.content.trim();
+  const externalId = sanitizeText(parsed.data.senderHandle) || `manual_${Date.now()}`;
+  const name       = sanitizeText(parsed.data.senderName)   || externalId;
+  const content    = sanitizeText(parsed.data.content);
   const now        = new Date().toISOString();
   const svc        = createServiceClient();
 

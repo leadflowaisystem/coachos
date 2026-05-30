@@ -8,6 +8,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import { sanitizeText } from "@/lib/sanitize";
+import { logAudit } from "@/lib/audit";
 
 interface Params { params: { orgId: string } }
 
@@ -60,7 +62,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
       { status: 400 }
     );
   }
-  const fields = parsed.data;
+  const fields = {
+    ...raw,
+    ...(raw.tone          !== undefined && { tone:          sanitizeText(raw.tone) }),
+    ...(raw.offer         !== undefined && { offer:         sanitizeText(raw.offer) }),
+    ...(raw.price_range   !== undefined && { price_range:   sanitizeText(raw.price_range) }),
+    ...(raw.sells         !== undefined && { sells:         sanitizeText(raw.sells) }),
+    ...(raw.extra_context !== undefined && { extra_context: sanitizeText(raw.extra_context) }),
+    ...(raw.objections    !== undefined && { objections:    raw.objections.map(sanitizeText) }),
+  };
 
   const now = new Date().toISOString();
   const service = createServiceClient();
@@ -90,5 +100,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (result.error) {
     return NextResponse.json({ error: result.error.message }, { status: 500 });
   }
+  void logAudit(service, params.orgId, user.id, "voice.update", {
+    updated_fields: Object.keys(fields),
+  });
   return NextResponse.json({ voiceProfile: result.data });
 }

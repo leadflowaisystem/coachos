@@ -5,10 +5,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { rateLimit, getIp } from "@/lib/ratelimit";
+import { rateLimitAsync, getIp } from "@/lib/ratelimit";
 
-export async function POST(req: NextRequest) {
-  const { allowed } = rateLimit(`waitlist:${getIp(req)}`, { limit: 5 });
+export async function POST(req: NextRequest): Promise<Response> {
+  const { allowed } = await rateLimitAsync(`waitlist:${getIp(req)}`, { limit: 5 });
   if (!allowed) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
 
   const { email, source } = await req.json().catch(() => ({}));

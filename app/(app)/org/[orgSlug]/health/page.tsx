@@ -1,11 +1,12 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
-import { MessageSquare, Calendar, CreditCard, Mic, ArrowRight, CheckCircle2 } from "lucide-react";
+import { MessageSquare, Calendar, CreditCard, Mic, ArrowRight, CheckCircle2, Activity } from "lucide-react";
 import Link from "next/link";
 import { HealthCard, type IntegrationStatus } from "@/components/integrations/health-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FadeUp } from "@/components/motion/primitives";
+import { cn } from "@/lib/utils";
 
 export async function generateMetadata({ params }: { params: { orgSlug: string } }) {
   return { title: `Integration health — CoachOS` };
@@ -86,6 +87,26 @@ export default async function HealthPage({
     voice &&
     (org.active_channel === "manual" ||
       integrationStatus(org.active_channel) === "connected");
+
+  /* ── Quota metrics ── */
+  const today = new Date().toISOString().slice(0, 10);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [brevoTodayRes, aiMsgRes] = await Promise.all([
+    (service as any).from("brevo_send_log").select("id", { count: "exact", head: true })
+      .eq("org_id", org.id).gte("sent_at", today),
+    service.from("orgs").select("monthly_ai_msg_count").eq("id", org.id).single(),
+  ]);
+
+  const brevoToday   = brevoTodayRes.count ?? 0;
+  const aiMsgCount   = (aiMsgRes.data as { monthly_ai_msg_count: number } | null)?.monthly_ai_msg_count ?? 0;
+  const brevoLimit   = 300; // Brevo free plan daily limit
+  const aiLimit      = 2000; // Matches trial limit; adjust per plan
+
+  function quotaColor(pct: number) {
+    if (pct >= 90) return "text-red-400";
+    if (pct >= 70) return "text-amber-400";
+    return "text-[var(--brand)]";
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -194,6 +215,39 @@ export default async function HealthPage({
           actionHref={`/org/${params.orgSlug}/settings/payments`}
         />
 
+      </div>
+
+      {/* ── Quota metrics ── */}
+      <div>
+        <h2 className="font-display text-base font-semibold text-[var(--text)] mb-3 flex items-center gap-2">
+          <Activity className="h-4 w-4 text-[var(--brand)]" /> Quota usage
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-2)] p-4 space-y-2">
+            <p className="text-xs text-[var(--text-3)]">Brevo emails today</p>
+            <p className={cn("font-mono text-2xl font-bold", quotaColor(Math.round(brevoToday / brevoLimit * 100)))}>
+              {brevoToday}<span className="text-sm font-normal text-[var(--text-3)]">/{brevoLimit}</span>
+            </p>
+            <div className="h-1.5 rounded-full bg-[var(--bg-3)]">
+              <div className={cn("h-1.5 rounded-full transition-all",
+                Math.round(brevoToday / brevoLimit * 100) >= 90 ? "bg-red-400" :
+                Math.round(brevoToday / brevoLimit * 100) >= 70 ? "bg-amber-400" : "bg-[var(--brand)]"
+              )} style={{ width: `${Math.min(100, Math.round(brevoToday / brevoLimit * 100))}%` }} />
+            </div>
+          </div>
+          <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-2)] p-4 space-y-2">
+            <p className="text-xs text-[var(--text-3)]">AI messages this month</p>
+            <p className={cn("font-mono text-2xl font-bold", quotaColor(Math.round(aiMsgCount / aiLimit * 100)))}>
+              {aiMsgCount}<span className="text-sm font-normal text-[var(--text-3)]">/{aiLimit}</span>
+            </p>
+            <div className="h-1.5 rounded-full bg-[var(--bg-3)]">
+              <div className={cn("h-1.5 rounded-full transition-all",
+                Math.round(aiMsgCount / aiLimit * 100) >= 90 ? "bg-red-400" :
+                Math.round(aiMsgCount / aiLimit * 100) >= 70 ? "bg-amber-400" : "bg-[var(--brand)]"
+              )} style={{ width: `${Math.min(100, Math.round(aiMsgCount / aiLimit * 100))}%` }} />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ── Footer CTA ── */}

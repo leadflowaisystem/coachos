@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { cache } from "@/lib/cache";
 
 interface Params { params: { orgId: string } }
 
@@ -21,10 +22,13 @@ export async function GET(req: NextRequest, { params }: Params) {
     .eq("org_id", params.orgId).eq("user_id", user.id).single();
   if (!member) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const orgId = params.orgId;
-  const days  = Math.min(parseInt(req.nextUrl.searchParams.get("days") ?? "30", 10), 90);
-  const svc   = createServiceClient();
+  const orgId   = params.orgId;
+  const days    = Math.min(parseInt(req.nextUrl.searchParams.get("days") ?? "30", 10), 90);
+  const cacheKey = `dashboard:${orgId}:${days}`;
+  const cached   = await cache.get(cacheKey);
+  if (cached) return NextResponse.json(cached);
 
+  const svc   = createServiceClient();
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
 
   // ── Load metrics_daily rows ──────────────────────────────────
@@ -139,7 +143,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
   }
 
-  return NextResponse.json({
+  const responseData = {
     funnel,
     revenue: {
       paid:     liveFallback?.revenue_paid    ?? totals.revenue_paid,
@@ -158,7 +162,12 @@ export async function GET(req: NextRequest, { params }: Params) {
     sparkline,
     days,
     is_live_fallback: !!liveFallback,
-  });
+  };
+
+  // Cache for 30s to avoid repeated DB hits on dashboard refresh
+  await cache.set(cacheKey, responseData, 30);
+
+  return NextResponse.json(responseData);
 }
 
 // ── Types ────────────────────────────────────────────────────

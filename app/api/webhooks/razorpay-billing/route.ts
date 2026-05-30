@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyPlatformWebhookSignature } from "@/lib/platform-billing";
 import { logAudit } from "@/lib/audit";
+import { invalidateAccessCache } from "@/lib/access";
 
 export async function POST(req: NextRequest) {
   const rawBody  = await req.text();
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest) {
         subscription_status: event === "subscription.halted" ? "halted" : "cancelled",
       }).eq("id", orgId);
       await logAudit(svc, orgId, null, "billing.cancelled", { subId, event });
+      await logAudit(svc, orgId, null, "subscription.downgrade", { to: "cancelled", event });
       break;
     }
 
@@ -112,6 +114,9 @@ export async function POST(req: NextRequest) {
       break;
     }
   }
+
+  // Invalidate cached access state so next request sees fresh plan
+  if (orgId) await invalidateAccessCache(orgId).catch(() => {});
 
   return NextResponse.json({ ok: true });
 }

@@ -23,6 +23,7 @@ import { X } from "lucide-react";
 
 interface Props {
   orgSlug: string;
+  orgId:   string;
 }
 
 const STEP_COUNT = 4;
@@ -52,9 +53,9 @@ const STEPS = [
   {
     emoji: "🔗",
     title: "Connect ManyChat to go live",
-    body:  "Your test worked! Now connect ManyChat to start receiving real Instagram DMs from your audience.",
-    primaryLabel: "Connect ManyChat →",
-    primaryAction: "manychat" as const,
+    body:  "One last step: connect Cal.com so the AI can embed your booking link in hot-lead replies automatically.",
+    primaryLabel: "Connect Cal.com →",
+    primaryAction: "cal" as const,
     secondaryLabel: "I'll do this later",
   },
 ] as const;
@@ -63,24 +64,34 @@ function storageKey(orgSlug: string) {
   return `coachos_first_run_done_${orgSlug}`;
 }
 
-export function FirstRunOverlay({ orgSlug }: Props) {
+export function FirstRunOverlay({ orgSlug, orgId }: Props) {
   const router = useRouter();
   const [step,    setStep]    = React.useState(0);
   const [visible, setVisible] = React.useState(false);
 
-  // Only check localStorage on the client — avoids SSR mismatch
+  // Check DB flag first, fall back to localStorage for fast path
   React.useEffect(() => {
-    try {
-      if (!localStorage.getItem(storageKey(orgSlug))) {
-        setVisible(true);
-      }
-    } catch {
-      // localStorage unavailable (private mode, etc.) — silently skip
-    }
-  }, [orgSlug]);
+    const lsKey = storageKey(orgSlug);
+    // Fast path: localStorage already set
+    try { if (localStorage.getItem(lsKey)) return; } catch { /* ignore */ }
+    // Slow path: check DB
+    fetch(`/api/orgs/${orgId}/flags`)
+      .then((r) => r.json())
+      .then((d) => { if (!d?.flags?.has_completed_first_run) setVisible(true); })
+      .catch(() => {
+        // DB unavailable — fall back to localStorage-only
+        try { if (!localStorage.getItem(lsKey)) setVisible(true); } catch { /* ignore */ }
+      });
+  }, [orgSlug, orgId]);
 
   function dismiss() {
     try { localStorage.setItem(storageKey(orgSlug), "1"); } catch { /* ignore */ }
+    // Persist to DB (fire-and-forget)
+    fetch(`/api/orgs/${orgId}/flags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ has_completed_first_run: true }),
+    }).catch(() => null);
     setVisible(false);
   }
 
@@ -97,9 +108,9 @@ export function FirstRunOverlay({ orgSlug }: Props) {
         dismiss();
         router.push(`/org/${orgSlug}/inbox`);
         break;
-      case "manychat":
+      case "cal":
         dismiss();
-        router.push(`/org/${orgSlug}/settings/channel/manychat`);
+        router.push(`/org/${orgSlug}/settings/cal`);
         break;
     }
   }

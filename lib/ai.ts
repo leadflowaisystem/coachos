@@ -243,6 +243,73 @@ export async function draftReply(params: {
   return { content, tokensIn, tokensOut, costInr };
 }
 
+// ── draftReplyStream ─────────────────────────────────────────
+/**
+ * Streaming variant of draftReply. Returns a ReadableStream that yields
+ * token chunks. Used by the inbox draft API when stream=true.
+ * Gate check happens before the stream is opened.
+ */
+export async function draftReplyStream(params: {
+  messages:     ConvMsg[];
+  voiceProfile: VoiceProf;
+  score:        number;
+  stage:        string;
+  orgId:        string;
+  calLink?:     string | null;
+}): Promise<ReadableStream<Uint8Array>> {
+  if (!process.env.LLM_API_KEY) {
+    const fallback = "Thanks for reaching out! I'd love to chat more about how we can work together.";
+    return new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(fallback));
+        controller.close();
+      },
+    });
+  }
+
+  await assertAiNotBlocked(params.orgId);
+
+  const { system, user } = buildDraftPrompt({
+    messages:     params.messages,
+    voiceProfile: params.voiceProfile,
+    score:        params.score,
+    stage:        params.stage,
+    calLink:      params.calLink,
+  });
+
+  const stream = await client.chat.completions.create({
+    model:       MODEL_SMART,
+    max_tokens:  320,
+    temperature: 0.72,
+    stream:      true,
+    messages: [
+      { role: "system", content: system },
+      { role: "user",   content: user   },
+    ],
+  });
+
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let totalIn = 0, totalOut = 0;
+      try {
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content ?? "";
+          if (delta) controller.enqueue(encoder.encode(delta));
+          if (chunk.usage) {
+            totalIn  = chunk.usage.prompt_tokens     ?? 0;
+            totalOut = chunk.usage.completion_tokens ?? 0;
+          }
+        }
+      } finally {
+        controller.close();
+        const p = priceFor(MODEL_SMART);
+        void incrementUsage(params.orgId, totalIn, totalOut, totalIn * p.in + totalOut * p.out);
+      }
+    },
+  });
+}
+
 // ── generateRevivalNudge ─────────────────────────────────────
 export interface RevivalResult {
   content:   string;

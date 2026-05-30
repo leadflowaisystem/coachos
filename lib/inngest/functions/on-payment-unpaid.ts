@@ -14,6 +14,8 @@ import { inngest } from "../client";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendChannelMessage } from "@/lib/booking";
 import { buildDunningMessage } from "@/prompts/dunning";
+import { sendEmail } from "@/lib/email";
+import { dunningEmail } from "@/lib/email-templates";
 
 interface PaymentUnpaidData {
   orgId:          string;
@@ -87,18 +89,22 @@ export const onPaymentUnpaid = inngest.createFunction(
       }).select("id").single();
 
       // Load lead + voice profile + payment details
-      const [leadRes, voiceRes, paymentRes] = await Promise.all([
-        svc.from("leads").select("name").eq("id", leadId).single(),
+      const [leadRes, voiceRes, paymentRes, orgRes] = await Promise.all([
+        svc.from("leads").select("name, metadata").eq("id", leadId).single(),
         svc.from("voice_profiles").select("offer").eq("org_id", orgId).single(),
         svc.from("payments").select("amount_inr, payment_link_url").eq("id", paymentId).single(),
+        svc.from("orgs").select("name").eq("id", orgId).single(),
       ]);
+      const leadData = leadRes.data as { name: string | null; metadata?: Record<string, unknown> } | null;
 
       return {
-        runId:       (run as { id: string } | null)?.id ?? null,
-        leadName:    (leadRes.data as { name: string | null } | null)?.name ?? null,
-        offer:       (voiceRes.data as { offer: string } | null)?.offer ?? "",
-        amountInr:   (paymentRes.data as { amount_inr: number } | null)?.amount_inr ?? 0,
-        paymentUrl:  (paymentRes.data as { payment_link_url: string | null } | null)?.payment_link_url ?? null,
+        runId:      (run as { id: string } | null)?.id ?? null,
+        leadName:   leadData?.name ?? null,
+        leadEmail:  (leadData?.metadata as Record<string, unknown> | undefined)?.email as string | undefined ?? null,
+        coachName:  (orgRes.data as { name: string } | null)?.name ?? "Your Coach",
+        offer:      (voiceRes.data as { offer: string } | null)?.offer ?? "",
+        amountInr:  (paymentRes.data as { amount_inr: number } | null)?.amount_inr ?? 0,
+        paymentUrl: (paymentRes.data as { payment_link_url: string | null } | null)?.payment_link_url ?? null,
       };
     });
 
@@ -116,6 +122,20 @@ export const onPaymentUnpaid = inngest.createFunction(
         coachOffer: ctx.offer,
       });
       await sendChannelMessage(conversationId, orgId, msg, "system");
+      if (ctx.leadEmail) {
+        await sendEmail({
+          to:       ctx.leadEmail,
+          subject:  `Payment reminder (attempt ${attempt})`,
+          html:     dunningEmail({
+            leadName:    ctx.leadName ?? "there",
+            daysOverdue: attempt,
+            paymentUrl:  ctx.paymentUrl ?? "",
+            coachName:   ctx.coachName,
+          }),
+          orgId,
+          template: "dunningEmail",
+        }).catch(() => null);
+      }
       await updateRun(ctx.runId!, attempt);
     };
 

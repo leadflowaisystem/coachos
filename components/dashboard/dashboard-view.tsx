@@ -401,6 +401,73 @@ export function DashboardView({ initialData, orgId, isDev }: Props) {
           </div>
         </StatCard>
       </div>
+
+      {/* ── Analytics row ────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard>
+          <CardLabel>DMs processed today</CardLabel>
+          <div className="flex flex-col items-center justify-center h-20 gap-1">
+            <p className="font-mono text-3xl font-bold text-[var(--brand)]">
+              {sparkline.length > 0 ? (sparkline[sparkline.length - 1]?.dms ?? 0) : 0}
+            </p>
+            <p className="text-[11px] text-[var(--text-3)]">screenshot threads today</p>
+          </div>
+        </StatCard>
+
+        <StatCard>
+          <CardLabel>Avg reply time</CardLabel>
+          <div className="flex flex-col items-center justify-center h-20 gap-1">
+            {speed_ms !== null ? (
+              <>
+                <p className="font-mono text-3xl font-bold text-[var(--brand)]">
+                  {Math.round(speed_ms / 1000)}s
+                </p>
+                <p className="text-[11px] text-[var(--text-3)]">Industry avg: 90 min</p>
+              </>
+            ) : (
+              <>
+                <p className="font-mono text-3xl font-bold text-[var(--text-3)]">—</p>
+                <p className="text-[11px] text-[var(--text-3)]">Industry avg: 90 min</p>
+              </>
+            )}
+          </div>
+        </StatCard>
+
+        <StatCard>
+          <CardLabel>Channel mix — {range}d</CardLabel>
+          <div className="space-y-1.5 pt-1">
+            {sources.length > 0 ? sources.slice(0, 4).map((s) => {
+              const total = sources.reduce((acc, x) => acc + x.leads, 0);
+              const pct   = total > 0 ? Math.round((s.leads / total) * 100) : 0;
+              return (
+                <div key={s.source} className="space-y-0.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-[var(--text-3)] truncate max-w-[70%]">{s.source}</span>
+                    <span className="text-[var(--text)] font-mono">{pct}%</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-[var(--bg-3)]">
+                    <div className="h-1 rounded-full bg-[var(--brand)]" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            }) : (
+              <p className="text-xs text-[var(--text-3)] text-center pt-4">No data yet</p>
+            )}
+          </div>
+        </StatCard>
+
+        <StatCard>
+          <CardLabel>Funnel conversion</CardLabel>
+          <div className="flex flex-col items-center justify-center h-20 gap-1">
+            <p className="font-mono text-3xl font-bold text-[var(--brand)]">
+              {convPct(funnel.booked, funnel.dms)}
+            </p>
+            <p className="text-[11px] text-[var(--text-3)]">
+              {funnel.dms} DMs → {funnel.booked} booked
+            </p>
+          </div>
+        </StatCard>
+      </div>
     </div>
   );
 }

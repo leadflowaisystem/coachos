@@ -8,6 +8,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
 import { rateLimit, getIp } from "@/lib/ratelimit";
 import { z } from "zod";
+import { sanitizeText } from "@/lib/sanitize";
 
 interface Params { params: { orgId: string } }
 
@@ -29,7 +30,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: parsed.error.issues?.[0]?.message ?? "Invalid input" }, { status: 400 });
   }
 
-  const { name, handle, goal, source, email } = parsed.data;
+  const name   = sanitizeText(parsed.data.name);
+  const handle = sanitizeText(parsed.data.handle);
+  const goal   = sanitizeText(parsed.data.goal);
+  const source = parsed.data.source;
+  const email  = parsed.data.email;
   const orgId = params.orgId;
   const svc   = createServiceClient();
   const now   = new Date().toISOString();
