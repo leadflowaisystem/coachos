@@ -14,18 +14,24 @@ import { getPlanLimits }       from "@/lib/plan";
 import { cache }               from "@/lib/cache";
 
 export interface AccessState {
-  status:                "trial_active" | "trial_expired" | "subscribed" | "cancelled" | "past_due";
-  plan:                  "trial" | "starter" | "growth" | "pro" | null;
-  trialDaysLeft:         number | null;
-  canSendAi:             boolean;
-  canUseAgency:          boolean;
-  canProcessScreenshot:  boolean;   // All paid plans + trial; false only on expired/cancelled
-  canCreateFunnelPages:  number;    // 1 / 3 / -1 unlimited
-  canUseWhatsApp:        boolean;   // Free feature on all plans
-  canConnectChannels:    number;    // -1 = unlimited
-  aiMsgsUsedThisMonth:   number;
-  aiMsgsLimit:           number;    // -1 = unlimited
-  reason?:               "trial_expired" | "limit_reached" | "cancelled" | "past_due";
+  status:                    "trial_active" | "trial_expired" | "subscribed" | "cancelled" | "past_due";
+  plan:                      "trial" | "starter" | "growth" | "pro" | null;
+  trialDaysLeft:             number | null;
+  canSendAi:                 boolean;
+  canUseAgency:              boolean;
+  canProcessScreenshot:      boolean;   // All paid plans + trial; false only on expired/cancelled
+  canCreateFunnelPages:      number;    // 1 / 3 / -1 unlimited
+  canUseWhatsApp:            boolean;   // Free feature on all plans
+  canConnectChannels:        number;    // -1 = unlimited
+  canUseAssistant3Reply:     boolean;
+  canUseCRM:                 number;    // max leads, -1 = unlimited
+  canUseManualBookingPayment: boolean;
+  canUseUpiPayments:         boolean;
+  canUseEmail:               boolean;
+  canUseRevival:             boolean;
+  aiMsgsUsedThisMonth:       number;
+  aiMsgsLimit:               number;    // -1 = unlimited
+  reason?:                   "trial_expired" | "limit_reached" | "cancelled" | "past_due";
 }
 
 type OrgRow = {
@@ -59,63 +65,110 @@ function buildState(org: OrgRow): AccessState {
 
   const limits = getPlanLimits(plan ?? "cancelled");
 
-  let canSendAi            = false;
-  let canUseAgency         = false;
-  let canConnectChannels   = 0;
-  let canProcessScreenshot = false;
-  let canCreateFunnelPages = 0;
-  const canUseWhatsApp     = true; // free feature on all plans
+  let canSendAi                  = false;
+  let canUseAgency               = false;
+  let canConnectChannels         = 0;
+  let canProcessScreenshot       = false;
+  let canCreateFunnelPages       = 0;
+  let canUseAssistant3Reply      = false;
+  let canUseCRM                  = 0;
+  let canUseManualBookingPayment = false;
+  let canUseUpiPayments          = false;
+  let canUseEmail                = false;
+  let canUseRevival              = false;
+  const canUseWhatsApp           = true; // free feature on all plans
   let reason: AccessState["reason"];
 
   switch (status) {
     case "trial_active":
-      canSendAi            = org.monthly_ai_msg_count < 2000;
-      canUseAgency         = false;
-      canConnectChannels   = 2;
-      canProcessScreenshot = true;
-      canCreateFunnelPages = 3;
+      canSendAi                  = org.monthly_ai_msg_count < 2000;
+      canUseAgency               = false;
+      canConnectChannels         = 2;
+      canProcessScreenshot       = true;
+      canCreateFunnelPages       = 3;
+      canUseAssistant3Reply      = true;
+      canUseCRM                  = 2000;
+      canUseManualBookingPayment = true;
+      canUseUpiPayments          = true;
+      canUseEmail                = true;
+      canUseRevival              = true;
       if (!canSendAi) reason = "limit_reached";
       break;
 
     case "trial_expired":
-      canSendAi            = false;
-      canConnectChannels   = 0;
-      canProcessScreenshot = false;
-      canCreateFunnelPages = 0;
-      reason               = "trial_expired";
+      canSendAi                  = false;
+      canConnectChannels         = 0;
+      canProcessScreenshot       = false;
+      canCreateFunnelPages       = 0;
+      canUseAssistant3Reply      = false;
+      canUseCRM                  = 0;
+      canUseManualBookingPayment = false;
+      canUseUpiPayments          = false;
+      canUseEmail                = false;
+      canUseRevival              = false;
+      reason                     = "trial_expired";
       break;
 
     case "subscribed":
       canSendAi = limits.aiMsgsPerMonth === -1
         ? true
         : org.monthly_ai_msg_count < limits.aiMsgsPerMonth;
-      canUseAgency         = plan === "pro";
-      canConnectChannels   = limits.channelsAllowed;
-      canProcessScreenshot = true;
-      canCreateFunnelPages = plan === "starter" ? 1 : plan === "growth" ? 3 : -1;
+      canUseAgency               = plan === "pro";
+      canConnectChannels         = limits.channelsAllowed;
+      canProcessScreenshot       = true;
+      canUseAssistant3Reply      = true;
+      canUseManualBookingPayment = true;
+      canUseUpiPayments          = true;
+      canUseEmail                = true;
+      if (plan === "starter") {
+        canCreateFunnelPages = 1;
+        canUseCRM            = 200;
+        canUseRevival        = false;
+      } else if (plan === "growth") {
+        canCreateFunnelPages = 3;
+        canUseCRM            = 2000;
+        canUseRevival        = true;
+      } else {
+        // pro
+        canCreateFunnelPages = -1;
+        canUseCRM            = -1;
+        canUseRevival        = true;
+      }
       if (!canSendAi) reason = "limit_reached";
       break;
 
     case "cancelled":
-      canSendAi            = false;
-      canConnectChannels   = 1;
-      canProcessScreenshot = false;
-      canCreateFunnelPages = 0;
-      reason               = "cancelled";
+      canSendAi                  = false;
+      canConnectChannels         = 1;
+      canProcessScreenshot       = false;
+      canCreateFunnelPages       = 0;
+      canUseAssistant3Reply      = false;
+      canUseCRM                  = 0;
+      canUseManualBookingPayment = false;
+      canUseUpiPayments          = false;
+      canUseEmail                = false;
+      canUseRevival              = false;
+      reason                     = "cancelled";
       break;
 
     case "past_due":
-      canSendAi            = false;
-      canConnectChannels   = limits.channelsAllowed;
-      canProcessScreenshot = false;
-      canCreateFunnelPages = 0;
-      reason               = "past_due";
+      canSendAi                  = false;
+      canConnectChannels         = limits.channelsAllowed;
+      canProcessScreenshot       = false;
+      canCreateFunnelPages       = 0;
+      canUseAssistant3Reply      = false;
+      canUseCRM                  = 0;
+      canUseManualBookingPayment = false;
+      canUseUpiPayments          = false;
+      canUseEmail                = false;
+      canUseRevival              = false;
+      reason                     = "past_due";
       break;
   }
 
   return {
     status,
-    plan:                  (plan ?? null) as AccessState["plan"],
+    plan:                      (plan ?? null) as AccessState["plan"],
     trialDaysLeft,
     canSendAi,
     canUseAgency,
@@ -123,6 +176,12 @@ function buildState(org: OrgRow): AccessState {
     canCreateFunnelPages,
     canUseWhatsApp,
     canConnectChannels,
+    canUseAssistant3Reply,
+    canUseCRM,
+    canUseManualBookingPayment,
+    canUseUpiPayments,
+    canUseEmail,
+    canUseRevival,
     aiMsgsUsedThisMonth: org.monthly_ai_msg_count,
     aiMsgsLimit:         status === "trial_active" ? 2000 : limits.aiMsgsPerMonth,
     reason,
@@ -143,18 +202,24 @@ export async function getAccessState(orgId: string): Promise<AccessState> {
 
   if (!data) {
     return {
-      status:                "cancelled",
-      plan:                  null,
-      trialDaysLeft:         null,
-      canSendAi:             false,
-      canUseAgency:          false,
-      canProcessScreenshot:  false,
-      canCreateFunnelPages:  0,
-      canUseWhatsApp:        false,
-      canConnectChannels:    0,
-      aiMsgsUsedThisMonth:   0,
-      aiMsgsLimit:           0,
-      reason:                "cancelled",
+      status:                    "cancelled",
+      plan:                      null,
+      trialDaysLeft:             null,
+      canSendAi:                 false,
+      canUseAgency:              false,
+      canProcessScreenshot:      false,
+      canCreateFunnelPages:      0,
+      canUseWhatsApp:            false,
+      canConnectChannels:        0,
+      canUseAssistant3Reply:     false,
+      canUseCRM:                 0,
+      canUseManualBookingPayment: false,
+      canUseUpiPayments:         false,
+      canUseEmail:               false,
+      canUseRevival:             false,
+      aiMsgsUsedThisMonth:       0,
+      aiMsgsLimit:               0,
+      reason:                    "cancelled",
     };
   }
 

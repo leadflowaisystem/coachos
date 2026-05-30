@@ -80,13 +80,55 @@ async function assertAiNotBlocked(orgId: string): Promise<void> {
   }).eq("id", orgId);
 }
 
-// ── Client ──────────────────────────────────────────────────────
-const client = new OpenAI({
-  apiKey:  process.env.LLM_API_KEY  ?? "no-key",
-  baseURL: process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1",
-  maxRetries: 2,
-  timeout:    20_000,
-});
+// ── Multi-key pool (round-robin + per-key cooldown on 429) ────
+const GROQ_KEYS: string[] = (() => {
+  const multi = process.env.GROQ_API_KEYS;
+  if (multi) return multi.split(",").map((k) => k.trim()).filter(Boolean);
+  const single = process.env.LLM_API_KEY;
+  return single ? [single] : ["no-key"];
+})();
+
+let keyIndex = 0;
+const keyCooldowns = new Map<string, number>(); // key → cooldown expiry ms
+
+function pickClient(): OpenAI {
+  const now = Date.now();
+  const start = keyIndex;
+  for (let i = 0; i < GROQ_KEYS.length; i++) {
+    const idx = (start + i) % GROQ_KEYS.length;
+    const key = GROQ_KEYS[idx];
+    if (!keyCooldowns.has(key) || (keyCooldowns.get(key)! < now)) {
+      keyIndex = (idx + 1) % GROQ_KEYS.length;
+      return new OpenAI({ apiKey: key, baseURL: process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1", maxRetries: 0, timeout: 20_000 });
+    }
+  }
+  // All keys on cooldown — use least-recently-cooled
+  keyIndex = (keyIndex + 1) % GROQ_KEYS.length;
+  return new OpenAI({ apiKey: GROQ_KEYS[keyIndex % GROQ_KEYS.length], baseURL: process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1", maxRetries: 0, timeout: 20_000 });
+}
+
+function handleRateLimit(key: string) {
+  keyCooldowns.set(key, Date.now() + 60_000); // 60s cooldown
+}
+
+async function callLLM(params: Parameters<OpenAI["chat"]["completions"]["create"]>[0]): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  for (let attempt = 0; attempt < GROQ_KEYS.length + 1; attempt++) {
+    const c = pickClient();
+    try {
+      return await c.chat.completions.create(params) as OpenAI.Chat.Completions.ChatCompletion;
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status;
+      if (status === 429) {
+        // find key used — approximate: use last index
+        const usedKey = GROQ_KEYS[(keyIndex - 1 + GROQ_KEYS.length) % GROQ_KEYS.length];
+        handleRateLimit(usedKey);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("All Groq keys rate-limited");
+}
 
 const MODEL_FAST  = process.env.LLM_MODEL_FAST  ?? "llama-3.1-8b-instant";
 const MODEL_SMART = process.env.LLM_MODEL_SMART ?? "llama-3.3-70b-versatile";
@@ -151,7 +193,7 @@ export async function qualifyLead(params: {
       : null,
   });
 
-  const response = await client.chat.completions.create({
+  const response = await callLLM({
     model:           MODEL_FAST,
     max_tokens:      120,          // label response is short
     temperature:     0.0,          // deterministic scoring
@@ -221,7 +263,7 @@ export async function draftReply(params: {
     calLink:      params.calLink,
   });
 
-  const response = await client.chat.completions.create({
+  const response = await callLLM({
     model:       MODEL_SMART,
     max_tokens:  320,
     temperature: 0.72,
@@ -277,7 +319,7 @@ export async function draftReplyStream(params: {
     calLink:      params.calLink,
   });
 
-  const stream = await client.chat.completions.create({
+  const stream = await pickClient().chat.completions.create({
     model:       MODEL_SMART,
     max_tokens:  320,
     temperature: 0.72,
@@ -350,7 +392,7 @@ export async function generateRevivalNudge(params: {
     calLink:      params.calLink,
   });
 
-  const response = await client.chat.completions.create({
+  const response = await callLLM({
     model:       MODEL_SMART,
     max_tokens:  200,
     temperature: 0.85,
@@ -406,7 +448,7 @@ export async function generateBookingConfirmMessage(params: {
   });
 
   try {
-    const response = await client.chat.completions.create({
+    const response = await callLLM({
       model:       MODEL_SMART,
       max_tokens:  100,
       temperature: 0.75,
@@ -476,7 +518,7 @@ export async function generatePaymentLinkMessage(params: {
   let tokensIn = 0, tokensOut = 0, costInr = 0;
 
   try {
-    const response = await client.chat.completions.create({
+    const response = await callLLM({
       model:       MODEL_SMART,
       max_tokens:  100,
       temperature: 0.75,
@@ -501,6 +543,90 @@ export async function generatePaymentLinkMessage(params: {
   }
 
   return { content, tokensIn, tokensOut, costInr };
+}
+
+// ── draftReplyThree ──────────────────────────────────────────────
+export interface ThreeReplyResult {
+  angle:    "warm" | "direct" | "educational";
+  text:     string;
+  embedsCalUrl:     boolean;
+  embedsPaymentUrl: boolean;
+}
+
+export async function draftReplyThree(params: {
+  leadFirstName: string;
+  leadHandle?:   string | null;
+  message:       string;
+  context?:      string | null;
+  voiceProfile:  VoiceProf;
+  score:         number;
+  stage:         string;
+  orgId:         string;
+  calLink?:      string | null;
+  funnelUrl?:    string | null;
+}): Promise<ThreeReplyResult[]> {
+  await assertAiNotBlocked(params.orgId);
+
+  const vp = params.voiceProfile;
+  const baseSystem = [
+    `You write Instagram DM replies for a coaching business. Sound human, no corporate filler.`,
+    `Coach tone: ${vp?.tone ?? "warm, direct, professional"}`,
+    vp?.sells ? `What they sell: ${vp.sells}` : "",
+    vp?.offer ? `The offer: ${vp.offer}` : "",
+    `Lead: ${params.leadFirstName}${params.leadHandle ? " (@" + params.leadHandle + ")" : ""}`,
+    params.context ? `Context about this lead: ${params.context}` : "",
+    `Lead message: "${params.message}"`,
+    `Lead score: ${params.score}/100 (${params.stage})`,
+    ``,
+    `Rules:`,
+    `- Under 60 words`,
+    `- No "Hey!", no excessive emojis`,
+    `- Sound like a real person texting`,
+    `- Do NOT start with the lead's name`,
+  ].filter(Boolean).join("\n");
+
+  const calUrl = params.calLink ?? "";
+  const angles: { angle: ThreeReplyResult["angle"]; instruction: string }[] = [
+    {
+      angle: "warm",
+      instruction: `Write a warm, curious reply. Acknowledge what they said emotionally, then ask ONE smart question that helps you understand their situation better. Do NOT pitch anything yet.${calUrl ? " You may mention booking a call casually at the very end if it fits naturally." : ""}`,
+    },
+    {
+      angle: "direct",
+      instruction: `Write a direct, confident reply. Answer their question or concern head-on. Then suggest booking a call.${calUrl ? ` Include this booking link naturally: ${calUrl}` : ""}`,
+    },
+    {
+      angle: "educational",
+      instruction: `Write an educational, trust-building reply. Share a quick insight, stat, or result relevant to their situation. End with a soft pivot to a call or the funnel page.${calUrl ? ` You may include: ${calUrl}` : ""}${params.funnelUrl ? ` Or funnel page: ${params.funnelUrl}` : ""}`,
+    },
+  ];
+
+  const results = await Promise.all(
+    angles.map(async ({ angle, instruction }) => {
+      const resp = await callLLM({
+        model:       MODEL_SMART,
+        max_tokens:  120,
+        temperature: 0.8,
+        messages: [
+          { role: "system", content: baseSystem + "\n\n" + instruction },
+          { role: "user",   content: "Write the reply now:" },
+        ],
+      });
+      const text = resp.choices[0]?.message?.content?.trim() ?? "…";
+      const tokensIn  = resp.usage?.prompt_tokens     ?? 0;
+      const tokensOut = resp.usage?.completion_tokens ?? 0;
+      const p = priceFor(MODEL_SMART);
+      void incrementUsage(params.orgId, tokensIn, tokensOut, tokensIn * p.in + tokensOut * p.out);
+      return {
+        angle,
+        text,
+        embedsCalUrl:     calUrl.length > 0 && text.includes(calUrl),
+        embedsPaymentUrl: false,
+      };
+    })
+  );
+
+  return results;
 }
 
 // ── incrementUsage ────────────────────────────────────────────────

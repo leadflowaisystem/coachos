@@ -25,6 +25,13 @@ export async function generateMetadata() {
 }
 
 export default async function DashboardPage({ params }: Props) {
+  // TODO (post-PMF, only build when 10+ customers ask):
+  // - AI accountability coach with daily check-ins
+  // - AI copilot chat panel
+  // - Gamification / rewards system
+  // - Structured context capture (intake forms)
+  // - Trend analysis deep-dive charts
+
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");

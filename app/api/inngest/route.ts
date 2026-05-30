@@ -10,6 +10,7 @@ import { onPaymentUnpaid }           from "@/lib/inngest/functions/on-payment-un
 import { onPaymentLinkMessage }      from "@/lib/inngest/functions/on-payment-link-message";
 import { onGhostRevival }            from "@/lib/inngest/functions/on-ghost-revival";
 import { aggregateDailyMetrics }     from "@/lib/inngest/functions/daily-metrics";
+import { onWeeklyReport }            from "@/lib/inngest/functions/on-weekly-report";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -24,5 +25,6 @@ export const { GET, POST, PUT } = serve({
     onPaymentLinkMessage,
     onGhostRevival,
     aggregateDailyMetrics,
+    onWeeklyReport,
   ],
 });
