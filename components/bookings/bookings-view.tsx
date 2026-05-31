@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { BookingCard, type BookingRow } from "./booking-card";
 import { SimulateBookingSheet, type SimulateLead } from "./simulate-booking-sheet";
+import { ManualBookingSheet } from "./manual-booking-sheet";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -139,14 +140,18 @@ export function BookingsView({ initialBookings, orgSlug, orgId, isDev, leads }: 
   const groups = groupBookings(bookings);
 
   // Dev bar — shown in both empty and populated states
-  const devBar = isDev && (
-    <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-dashed border-amber-500/20 bg-amber-500/5 px-3 py-2 max-w-2xl">
-      <span className="text-[11px] text-amber-500/70 font-mono uppercase tracking-wide mr-1">
-        dev
-      </span>
-      <SimulateBookingSheet orgId={orgId} leads={leads} onDone={handleUpdate} />
+  const actionBar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <ManualBookingSheet orgId={orgId} leads={leads} onDone={handleUpdate} />
+      {isDev && (
+        <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-dashed border-amber-500/20 bg-amber-500/5 px-3 py-1.5">
+          <span className="text-[11px] text-amber-500/70 font-mono uppercase tracking-wide">dev</span>
+          <SimulateBookingSheet orgId={orgId} leads={leads} onDone={handleUpdate} />
+        </div>
+      )}
     </div>
   );
+  const devBar = actionBar;
 
   if (groups.length === 0) {
     return (

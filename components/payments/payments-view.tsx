@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { PaymentCard, type PaymentRow } from "./payment-card";
 import { SimulatePaymentSheet, type SimulateLead } from "./simulate-payment-sheet";
+import { ManualPaymentSheet } from "./manual-payment-sheet";
 import { cn } from "@/lib/utils";
 
 interface PendingPayment {
@@ -130,17 +131,15 @@ export function PaymentsView({
   const totalPaid    = payments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amount_inr, 0);
   const totalPending = payments.filter((p) => p.status === "pending").reduce((s, p) => s + p.amount_inr, 0);
 
-  const devBar = isDev && (
-    <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-dashed border-amber-500/20 bg-amber-500/5 px-3 py-2 max-w-2xl">
-      <span className="text-[11px] text-amber-500/70 font-mono uppercase tracking-wide mr-1">
-        dev
-      </span>
-      <SimulatePaymentSheet
-        orgId={orgId}
-        leads={leads}
-        pendingPayments={localPending}
-        onDone={handleUpdate}
-      />
+  const devBar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <ManualPaymentSheet orgId={orgId} leads={leads} onDone={handleUpdate} />
+      {isDev && (
+        <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-dashed border-amber-500/20 bg-amber-500/5 px-3 py-1.5">
+          <span className="text-[11px] text-amber-500/70 font-mono uppercase tracking-wide">dev</span>
+          <SimulatePaymentSheet orgId={orgId} leads={leads} pendingPayments={localPending} onDone={handleUpdate} />
+        </div>
+      )}
     </div>
   );
 
