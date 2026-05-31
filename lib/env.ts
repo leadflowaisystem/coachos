@@ -70,6 +70,20 @@ export const env = {
     return get("ENCRYPTION_KEY");
   },
 
+  // ── Meta / Instagram ─────────────────────────────────────────────────────────
+  get META_APP_ID() {
+    return get("META_APP_ID");
+  },
+  get META_APP_SECRET() {
+    return get("META_APP_SECRET");
+  },
+  get META_WEBHOOK_VERIFY_TOKEN() {
+    return get("META_WEBHOOK_VERIFY_TOKEN");
+  },
+  get NEXT_PUBLIC_META_APP_ID() {
+    return get("NEXT_PUBLIC_META_APP_ID");
+  },
+
   // ── App ──────────────────────────────────────────────────────────────────────
   get NEXT_PUBLIC_APP_URL() {
     return get("NEXT_PUBLIC_APP_URL", "http://localhost:3000");

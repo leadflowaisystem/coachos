@@ -16,6 +16,7 @@ import { onWeeklyScorecard }         from "@/lib/inngest/functions/on-weekly-sco
 import { onMissedTaskCron }          from "@/lib/inngest/functions/on-missed-task-cron";
 import { onTrialExpiry }             from "@/lib/inngest/functions/on-trial-expiry";
 import { onMonthlyReset }            from "@/lib/inngest/functions/on-monthly-reset";
+import { onMetaTokenRefresh }        from "@/lib/inngest/functions/on-meta-token-refresh";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -36,5 +37,6 @@ export const { GET, POST, PUT } = serve({
     onMissedTaskCron,
     onTrialExpiry,
     onMonthlyReset,
+    onMetaTokenRefresh,
   ],
 });

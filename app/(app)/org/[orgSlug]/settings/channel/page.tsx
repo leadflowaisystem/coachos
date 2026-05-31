@@ -32,6 +32,7 @@ export default async function ChannelSettingsPage({ params }: Props) {
   );
 
   const manyChatConnected = !!(intMap["manychat"]?.active);
+  const instagramConnected = !!(intMap["meta_instagram"]?.active);
 
   return (
     <div className="max-w-lg mx-auto space-y-6">
@@ -52,28 +53,36 @@ export default async function ChannelSettingsPage({ params }: Props) {
       </div>
 
       <div className="space-y-3">
-        {/* ── Instagram — disabled, Meta approval required ── */}
-        <div className="flex items-start justify-between gap-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-1)] p-4">
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--bg-3)] text-[var(--text-3)]">
+        {/* ── Instagram — Connect via Meta OAuth ── */}
+        <div className="flex items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-1)] p-4">
+          <div className="flex items-center gap-3">
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] ${instagramConnected ? "bg-[var(--brand)]/10 text-[var(--brand)]" : "bg-[var(--bg-3)] text-[var(--text-3)]"}`}>
               <Instagram className="h-5 w-5" />
             </div>
             <div>
               <p className="text-sm font-medium text-[var(--text)]">Instagram DMs</p>
-              <p className="text-xs text-[var(--text-3)] leading-relaxed mt-0.5">
-                Native Instagram requires Meta Business API approval — a multi-week process.
-              </p>
-              <p className="mt-2 text-xs text-amber-400/80 leading-relaxed">
-                Use <strong className="text-amber-400">Simulate DM</strong> in your inbox to test the full AI
-                pipeline today. Real Instagram can be connected once your Meta app is approved.
+              <p className="text-xs text-[var(--text-3)] mt-0.5">
+                {instagramConnected
+                  ? "Connected — DMs sync automatically via Meta Graph API."
+                  : "Connect your Instagram Business account via Meta OAuth."}
               </p>
             </div>
           </div>
-          <div className="shrink-0 mt-0.5">
-            <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-3)] px-2.5 py-0.5 text-[10px] font-medium text-[var(--text-3)]">
-              Pending approval
-            </span>
-          </div>
+          {instagramConnected ? (
+            <Link
+              href={`/org/${params.orgSlug}/settings/channel/instagram`}
+              className="shrink-0 flex items-center gap-1 rounded-lg border border-[var(--brand)]/30 bg-[var(--brand)]/8 px-3 py-1.5 text-xs font-medium text-[var(--brand)] hover:bg-[var(--brand)]/12 transition-colors"
+            >
+              <CheckCircle2 className="h-3 w-3" /> Manage
+            </Link>
+          ) : (
+            <Link
+              href={`/org/${params.orgSlug}/settings/channel/instagram`}
+              className="shrink-0 flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-2)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] hover:bg-[var(--bg-3)] hover:border-[var(--brand)]/40 transition-colors"
+            >
+              Connect <ArrowRight className="h-3 w-3" />
+            </Link>
+          )}
         </div>
 
         {/* ── ManyChat — links to setup page ── */}

@@ -4,9 +4,11 @@ import * as React from "react";
 import { Copy, Check } from "lucide-react";
 
 interface Props {
-  orgSlug:   string;
-  funnelUrl: string;
-  calUrl:    string;
+  orgSlug:      string;
+  funnelUrl:    string;
+  calUrl:       string;
+  handoffUrl:   string;
+  webhookToken: string;
 }
 
 function CopyButton({ value }: { value: string }) {
@@ -69,7 +71,14 @@ const GUIDES = [
   },
 ] as const;
 
-export function ManyChatSetupClient({ funnelUrl, calUrl }: Props) {
+export function ManyChatSetupClient({ funnelUrl, calUrl, handoffUrl, webhookToken }: Props) {
+  const handoffBody = JSON.stringify({
+    ig_user_id:      "{{subscriber id}}",
+    ig_username:     "{{instagram username}}",
+    name:            "{{full name}}",
+    trigger_keyword: "YOUR_KEYWORD",
+    initial_message: "{{last input text}}",
+  }, null, 2);
   return (
     <div className="space-y-8">
       {/* Intro */}
@@ -109,6 +118,48 @@ export function ManyChatSetupClient({ funnelUrl, calUrl }: Props) {
       <p className="text-xs text-[var(--text-3)]">
         All three guides use ManyChat free features only — no paid plan or External Requests required.
       </p>
+
+      {/* ── Handoff section ── */}
+      <div className="rounded-[var(--radius-lg)] border border-[var(--brand)]/20 bg-[var(--brand)]/4 p-4 space-y-3">
+        <p className="text-xs font-semibold text-[var(--brand)] uppercase tracking-wider">
+          Guide D — Hand off to CoachOS after trigger (any plan)
+        </p>
+        <p className="text-xs text-[var(--text-2)] leading-relaxed">
+          After your ManyChat trigger fires and sends the initial resource, add an{" "}
+          <strong>HTTP Request</strong> action to hand the lead to CoachOS.
+          CoachOS AI takes over all follow-up automatically.
+        </p>
+        <div className="space-y-2.5">
+          <UrlChip label="Handoff URL (POST)" value={handoffUrl} />
+          {webhookToken && (
+            <UrlChip label="Header: X-Webhook-Token" value={webhookToken} />
+          )}
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-[var(--text-2)]">Body (JSON)</p>
+            <div className="flex items-start gap-2 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-3)] px-3 py-2">
+              <pre className="flex-1 min-w-0 overflow-x-auto text-[10px] font-mono text-[var(--text)] leading-relaxed whitespace-pre">
+                {handoffBody}
+              </pre>
+              <CopyButton value={handoffBody} />
+            </div>
+          </div>
+        </div>
+        <ol className="space-y-1.5">
+          {[
+            "In your Flow, after your trigger fires and you send the initial resource…",
+            "Add Action → HTTP Request → Method: POST",
+            "URL: paste the Handoff URL above",
+            "Headers: X-Webhook-Token → paste your token above",
+            "Body: paste the JSON above",
+            "CoachOS receives the lead and AI takes over all follow-up",
+          ].map((step, i) => (
+            <li key={i} className="flex gap-2.5 text-xs text-[var(--text-3)] leading-relaxed">
+              <span className="shrink-0 font-mono text-[var(--brand)] font-semibold w-3">{i + 1}.</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }

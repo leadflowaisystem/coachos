@@ -34,6 +34,13 @@ export default async function ManyChatSetupPage({ params }: Props) {
     .eq("org_id", org.id).eq("provider", "calcom").eq("active", true).maybeSingle();
   const calUrl = ((calRow?.config as Record<string, string> | null)?.booking_url) ?? "";
 
+  // Load manychat webhook token for handoff section
+  const { data: mcRow } = await svc
+    .from("integrations").select("config, active")
+    .eq("org_id", org.id).eq("provider", "manychat").maybeSingle();
+  const webhookToken = ((mcRow?.config as Record<string, string> | null)?.webhook_token) ?? "";
+  const handoffUrl = `${appUrl}/api/webhooks/manychat-handoff/${org.id}`;
+
   return (
     <div className="max-w-lg mx-auto space-y-6">
       <div className="flex items-center gap-3">
@@ -56,6 +63,8 @@ export default async function ManyChatSetupPage({ params }: Props) {
         orgSlug={params.orgSlug}
         funnelUrl={funnelUrl}
         calUrl={calUrl}
+        handoffUrl={handoffUrl}
+        webhookToken={webhookToken}
       />
     </div>
   );

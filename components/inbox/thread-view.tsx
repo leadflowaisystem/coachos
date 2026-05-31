@@ -11,6 +11,7 @@ import { Skeleton }  from "@/components/ui/skeleton";
 import { AiDraftCard } from "./ai-draft-card";
 import { ComposeBar  } from "./compose-bar";
 import { timeAgo }   from "@/lib/time";
+import { createClient } from "@/lib/supabase/client";
 import type { InboxMessage, InboxDraft, InboxLead } from "@/types/inbox";
 
 interface Props {
@@ -74,25 +75,54 @@ export function ThreadView({ orgId, orgSlug, convId, lead, initialMessages, init
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  // Poll every 3 s to pick up Inngest-inserted messages (booking confirm,
-  // payment link, AI drafts, etc.) without requiring a manual refresh.
+  // Supabase Realtime: subscribe to new messages for this conversation.
+  // Falls back to 5s polling for AI drafts (which come via Inngest, not direct DB insert the realtime catches).
+  React.useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel(`conversation:${convId}`)
+      .on(
+        "postgres_changes",
+        {
+          event:  "INSERT",
+          schema: "public",
+          table:  "messages",
+          filter: `conversation_id=eq.${convId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as {
+            id: string; direction: string; content: string; sent_at: string; metadata: Record<string, unknown>;
+          };
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, {
+              id:        newMsg.id,
+              direction: newMsg.direction as "inbound" | "outbound",
+              content:   newMsg.content,
+              sent_at:   newMsg.sent_at,
+              metadata:  newMsg.metadata ?? {},
+            }];
+          });
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [convId]);
+
+  // Poll every 5 s to pick up Inngest-generated drafts (ai_drafts table not in realtime scope)
   React.useEffect(() => {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/orgs/${orgId}/conversations/${convId}`);
         if (!res.ok) return;
-        const json = await res.json() as { messages?: InboxMessage[]; pendingDraft?: InboxDraft | null };
-        const fresh = json.messages ?? [];
-        setMessages((prev) => {
-          if (fresh.length > prev.length) return fresh;
-          return prev;
-        });
-        // Surface a newly-arrived pending draft
+        const json = await res.json() as { pendingDraft?: InboxDraft | null };
         if (json.pendingDraft && !draft) {
           setDraft(json.pendingDraft);
         }
-      } catch { /* non-fatal — ignore network hiccup */ }
-    }, 3000);
+      } catch { /* non-fatal */ }
+    }, 5000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, convId]);
