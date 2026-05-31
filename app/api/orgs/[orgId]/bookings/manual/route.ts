@@ -1,13 +1,22 @@
 /**
  * POST /api/orgs/[orgId]/bookings/manual
- * Logs a manually-created booking (coach records a call that happened outside automation).
+ * Logs a manually-created booking. Immediately sends an AI confirmation
+ * message to the lead's inbox thread + email if lead has email.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
 import { getAccessState } from "@/lib/access";
+import { generateBookingConfirmMessage, fetchDeepContext } from "@/lib/ai";
+import { getOrCreateConversation, insertOutboundMessage } from "@/lib/conversation";
+import { sendEmail } from "@/lib/email";
+import { bookingConfirmation } from "@/lib/email-templates";
+import { getLeadFirstName, formatMeetingTime } from "@/lib/leads";
+import { getCalLink } from "@/lib/booking";
 import { z } from "zod";
+
+export const maxDuration = 30;
 
 interface Params { params: { orgId: string } }
 
@@ -45,21 +54,32 @@ export async function POST(req: NextRequest, { params }: Params) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svc = createServiceClient() as any;
 
-  // Load lead name for attendee_name
-  const { data: leadRow } = await svc.from("leads").select("name").eq("id", lead_id).eq("org_id", params.orgId).single();
-  if (!leadRow) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-  const lead = leadRow as { name: string | null };
+  // ── Load lead + voice profile + org ──────────────────────────
+  const [leadRes, vpRes, orgRes] = await Promise.all([
+    svc.from("leads").select("name, external_id, metadata").eq("id", lead_id).eq("org_id", params.orgId).single(),
+    svc.from("voice_profiles").select("tone, offer, price_range, sells, objections, extra_context").eq("org_id", params.orgId).single(),
+    svc.from("orgs").select("name").eq("id", params.orgId).single(),
+  ]);
 
-  // Calculate ends_at (1 hour after starts_at)
+  if (!leadRes.data) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  const lead      = leadRes.data as { name: string | null; external_id: string | null; metadata?: Record<string, unknown> };
+  const vp        = vpRes.data as Parameters<typeof generateBookingConfirmMessage>[0]["voiceProfile"];
+  const orgName   = (orgRes.data as { name: string } | null)?.name ?? "Your Coach";
+  const leadEmail = (lead.metadata?.email) as string | undefined ?? null;
+
+  // ── Resolve meeting URL: Cal.com > form-provided > null ──────
+  const calLink    = await getCalLink(params.orgId);
+  const resolvedMeetingUrl = calLink ?? meeting_url ?? null;
+
+  // ── Insert booking row ────────────────────────────────────────
   const ends_at = new Date(new Date(starts_at).getTime() + 60 * 60 * 1000).toISOString();
-
-  const { data: booking, error } = await svc.from("bookings").insert({
+  const { data: booking, error: bookingErr } = await svc.from("bookings").insert({
     org_id:        params.orgId,
     lead_id,
     status:        "confirmed",
     starts_at,
     ends_at,
-    meeting_url:   meeting_url || null,
+    meeting_url:   resolvedMeetingUrl,
     attendee_name: lead.name,
     notes:         notes || null,
     source:        "manual",
@@ -67,32 +87,58 @@ export async function POST(req: NextRequest, { params }: Params) {
     updated_at:    now,
   }).select("id, starts_at").single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (bookingErr) return NextResponse.json({ error: bookingErr.message }, { status: 500 });
   const b = booking as { id: string; starts_at: string };
 
-  // Load lead's conversation (if any) to fire confirm-message
-  const { data: convRow } = await svc.from("conversations")
-    .select("id").eq("org_id", params.orgId).eq("lead_id", lead_id)
-    .order("created_at", { ascending: false }).limit(1).single();
-  const conversationId = (convRow as { id: string } | null)?.id ?? null;
+  // ── Get or create conversation ────────────────────────────────
+  const conversationId = await getOrCreateConversation(params.orgId, lead_id, "manual");
 
-  // Fire Inngest events
-  await inngest.send([
-    {
-      name: "booking.confirm-message",
-      data: { orgId: params.orgId, bookingId: b.id },
-    },
-    {
-      name: "booking.created",
-      data: {
-        orgId: params.orgId,
-        bookingId: b.id,
-        leadId: lead_id,
-        conversationId,
-        startsAt: b.starts_at,
-      },
-    },
-  ]);
+  // ── Generate + insert AI confirmation message ─────────────────
+  const firstName     = getLeadFirstName({ name: lead.name, external_id: lead.external_id });
+  const meetingTimeFmt = formatMeetingTime(starts_at);
+  const deepCtx       = await fetchDeepContext(params.orgId);
 
-  return NextResponse.json({ booking_id: b.id });
+  const aiResult = await generateBookingConfirmMessage({
+    leadFirstName:        firstName,
+    meetingTimeFormatted: meetingTimeFmt,
+    meetingUrl:           resolvedMeetingUrl,
+    voiceProfile:         vp,
+    orgId:                params.orgId,
+  }).catch(() => ({
+    content: `Done ${firstName}. Your call on ${meetingTimeFmt} is confirmed.${resolvedMeetingUrl ? ` Join here: ${resolvedMeetingUrl}` : ""} Talk soon.`,
+  }));
+  void deepCtx; // deep context injected automatically inside generateBookingConfirmMessage via fetchDeepContext
+
+  await insertOutboundMessage(conversationId, params.orgId, aiResult.content, "booking_confirm");
+
+  // ── Send email if lead has email ──────────────────────────────
+  if (leadEmail) {
+    await sendEmail({
+      to:       leadEmail,
+      subject:  "Your call is confirmed!",
+      html:     bookingConfirmation({
+        leadName:    firstName || "there",
+        meetingTime: meetingTimeFmt,
+        meetingUrl:  resolvedMeetingUrl ?? "",
+        coachName:   orgName,
+      }),
+      orgId:    params.orgId,
+      leadId:   lead_id,
+      template: "bookingConfirmation",
+    }).catch(() => null);
+  }
+
+  // ── Fire reminder Inngest events ──────────────────────────────
+  await inngest.send({
+    name: "booking.created",
+    data: {
+      orgId:          params.orgId,
+      bookingId:      b.id,
+      leadId:         lead_id,
+      conversationId,
+      startsAt:       b.starts_at,
+    },
+  });
+
+  return NextResponse.json({ booking_id: b.id, conversation_id: conversationId });
 }

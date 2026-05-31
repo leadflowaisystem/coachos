@@ -100,5 +100,32 @@ export async function POST(req: NextRequest, { params }: Params) {
   }).select("id, name, stage, score").single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ lead });
+  const newLead = lead as { id: string; name: string | null; stage: string; score: number };
+
+  // ── Auto-create conversation so lead appears in /inbox immediately ──
+  let conversationId: string | null = null;
+  try {
+    const { data: conv } = await svc.from("conversations").insert({
+      org_id:               params.orgId,
+      lead_id:              newLead.id,
+      channel_provider:     "manual_crm",
+      status:               "active",
+      last_message_at:      now,
+      last_message_preview: "",
+    }).select("id").single();
+    conversationId = (conv as { id: string } | null)?.id ?? null;
+
+    if (conversationId) {
+      await svc.from("messages").insert({
+        conversation_id: conversationId,
+        org_id:          params.orgId,
+        direction:       "system",
+        content:         "Lead added via CRM.",
+        sent_at:         now,
+        metadata:        { source: "crm" },
+      });
+    }
+  } catch { /* non-fatal — lead is created, conversation auto-create best-effort */ }
+
+  return NextResponse.json({ lead: newLead, conversation_id: conversationId });
 }

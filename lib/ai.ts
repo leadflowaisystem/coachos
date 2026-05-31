@@ -702,6 +702,51 @@ export async function draftReplyThree(params: {
   return results;
 }
 
+// ── generatePaymentReceivedMessage ────────────────────────────────
+import { buildPaymentReceivedPrompt } from "@/prompts/payment-received";
+
+export async function generatePaymentReceivedMessage(params: {
+  leadFirstName: string;
+  amountInr:     number;
+  description:   string;
+  voiceProfile:  VoiceProf;
+  orgId:         string;
+}): Promise<DraftResult> {
+  if (!process.env.LLM_API_KEY) {
+    const name = params.leadFirstName ? `, ${params.leadFirstName}` : "";
+    return {
+      content:  `Payment received${name}. ₹${params.amountInr.toLocaleString("en-IN")} for ${params.description} confirmed. Welcome — I'll send the next steps shortly.`,
+      tokensIn: 0, tokensOut: 0, costInr: 0,
+    };
+  }
+
+  const { system, user } = buildPaymentReceivedPrompt({
+    leadFirstName: params.leadFirstName,
+    amountInr:     params.amountInr,
+    description:   params.description,
+    coachTone:     params.voiceProfile?.tone  ?? "",
+    coachOffer:    params.voiceProfile?.offer ?? "",
+  });
+
+  const response = await callLLM({
+    model:       MODEL_SMART,
+    max_tokens:  80,
+    temperature: 0.65,
+    messages: [
+      { role: "system", content: system },
+      { role: "user",   content: user   },
+    ],
+  });
+
+  const content   = response.choices[0]?.message?.content?.trim() ?? "…";
+  const tokensIn  = response.usage?.prompt_tokens     ?? 0;
+  const tokensOut = response.usage?.completion_tokens ?? 0;
+  const p         = priceFor(MODEL_SMART);
+  const costInr   = tokensIn * p.in + tokensOut * p.out;
+  await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
+  return { content, tokensIn, tokensOut, costInr };
+}
+
 // ── incrementUsage ────────────────────────────────────────────────
 async function incrementUsage(
   orgId: string, tokensIn: number, tokensOut: number, costInr: number

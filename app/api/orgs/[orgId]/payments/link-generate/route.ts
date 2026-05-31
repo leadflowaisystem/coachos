@@ -7,6 +7,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createPaymentLink } from "@/lib/razorpay";
 import { inngest } from "@/lib/inngest/client";
+import { getOrCreateConversation } from "@/lib/conversation";
+import { sendEmail } from "@/lib/email";
+import { paymentLink as paymentLinkEmail } from "@/lib/email-templates";
+import { getLeadFirstName } from "@/lib/leads";
 import { z } from "zod";
 
 interface Params { params: { orgId: string } }
@@ -45,14 +49,16 @@ export async function POST(req: NextRequest, { params }: Params) {
   const [orgRes, rzpRes, leadRes] = await Promise.all([
     svc.from("orgs").select("name, upi_id").eq("id", params.orgId).single(),
     svc.from("integrations").select("config, active").eq("org_id", params.orgId).eq("provider", "razorpay").eq("active", true).maybeSingle(),
-    svc.from("leads").select("id, name").eq("id", lead_id).eq("org_id", params.orgId).single(),
+    svc.from("leads").select("id, name, external_id, metadata").eq("id", lead_id).eq("org_id", params.orgId).single(),
   ]);
 
   if (!leadRes.data) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
   const org   = orgRes.data as { name: string; upi_id: string | null } | null;
   const rzp   = rzpRes.data as { config: Record<string, string>; active: boolean } | null;
-  const lead  = leadRes.data as { id: string; name: string | null };
+  const lead  = leadRes.data as { id: string; name: string | null; external_id?: string | null; metadata?: Record<string, unknown> };
+  const leadEmail = (lead.metadata?.email) as string | undefined ?? null;
+  const firstName = getLeadFirstName({ name: lead.name, external_id: lead.external_id ?? null });
 
   const hasRazorpay = !!rzp?.active;
   const hasUpi      = !!org?.upi_id;
@@ -91,15 +97,21 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "No payment method configured. Connect Razorpay or add a UPI ID in Settings › Payments." }, { status: 400 });
   }
 
-  // Insert payment row
+  // ── Get or create conversation so Inngest handler can thread the message ──
+  const conversationId = await getOrCreateConversation(params.orgId, lead_id, "manual");
+
+  // Insert payment row WITH conversation_id so on-payment-link-message can find it
   const { data: payment, error } = await svc.from("payments").insert({
     org_id:           params.orgId,
     lead_id,
     amount_inr,
     status:           "pending",
     payment_link_url: linkUrl,
+    link_url:         linkUrl,
+    link_method:      linkMethod,
     notes:            `${linkMethod}: ${description}`,
     source:           linkMethod,
+    conversation_id:  conversationId,
     created_at:       now,
     updated_at:       now,
   }).select("id").single();
@@ -107,11 +119,29 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const p = payment as { id: string };
 
-  // Fire payment.link-message to draft an AI message in the thread
+  // Fire payment.link-message — Inngest handler will generate AI message + insert into thread
   await inngest.send({
     name: "payment.link-message",
     data: { orgId: params.orgId, paymentId: p.id, description },
   });
 
-  return NextResponse.json({ payment_id: p.id, link_url: linkUrl, method: linkMethod });
+  // Send email if lead has email (in addition to in-thread message)
+  if (leadEmail) {
+    await sendEmail({
+      to:       leadEmail,
+      subject:  "Your payment link",
+      html:     paymentLinkEmail({
+        leadName:    firstName || "there",
+        amount:      `₹${amount_inr.toLocaleString("en-IN")}`,
+        description,
+        paymentUrl:  linkUrl,
+        coachName:   org?.name ?? "Your Coach",
+      }),
+      orgId:    params.orgId,
+      leadId:   lead_id,
+      template: "paymentLink",
+    }).catch(() => null);
+  }
+
+  return NextResponse.json({ payment_id: p.id, link_url: linkUrl, method: linkMethod, conversation_id: conversationId });
 }

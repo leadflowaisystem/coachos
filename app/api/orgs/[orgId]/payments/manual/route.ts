@@ -1,13 +1,20 @@
 /**
  * POST /api/orgs/[orgId]/payments/manual
  * Records a payment that happened outside the automated flow.
+ * Sends an AI receipt confirmation to the lead's inbox + email if available.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { inngest } from "@/lib/inngest/client";
 import { getAccessState } from "@/lib/access";
+import { generatePaymentReceivedMessage } from "@/lib/ai";
+import { getOrCreateConversation, insertOutboundMessage } from "@/lib/conversation";
+import { sendEmail } from "@/lib/email";
+import { paymentReceived } from "@/lib/email-templates";
+import { getLeadFirstName } from "@/lib/leads";
 import { z } from "zod";
+
+export const maxDuration = 30;
 
 interface Params { params: { orgId: string } }
 
@@ -43,44 +50,79 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { lead_id, amount_inr, payment_method, received_at, description } = parsed.data;
   const now = new Date().toISOString();
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svc = createServiceClient() as any;
 
-  // Verify lead belongs to org
-  const { data: leadRow } = await svc.from("leads").select("id, ltv_inr").eq("id", lead_id).eq("org_id", params.orgId).single();
-  if (!leadRow) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-  const lead = leadRow as { id: string; ltv_inr: number | null };
+  // ── Load lead + voice profile + org ──────────────────────────
+  const [leadRes, vpRes, orgRes] = await Promise.all([
+    svc.from("leads").select("id, name, external_id, metadata, ltv_inr").eq("id", lead_id).eq("org_id", params.orgId).single(),
+    svc.from("voice_profiles").select("tone, offer, price_range, sells, objections, extra_context").eq("org_id", params.orgId).single(),
+    svc.from("orgs").select("name").eq("id", params.orgId).single(),
+  ]);
 
-  // Insert payment row
+  if (!leadRes.data) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  const lead      = leadRes.data as { id: string; name: string | null; external_id: string | null; metadata?: Record<string, unknown>; ltv_inr: number | null };
+  const vp        = vpRes.data as Parameters<typeof generatePaymentReceivedMessage>[0]["voiceProfile"];
+  const orgName   = (orgRes.data as { name: string } | null)?.name ?? "Your Coach";
+  const leadEmail = (lead.metadata?.email) as string | undefined ?? null;
+  const firstName = getLeadFirstName({ name: lead.name, external_id: lead.external_id });
+  const desc      = description || payment_method;
+
+  // ── Insert payment row ────────────────────────────────────────
   const { data: payment, error } = await svc.from("payments").insert({
-    org_id:        params.orgId,
+    org_id:         params.orgId,
     lead_id,
     amount_inr,
-    status:        "paid",
-    notes:         description ? `${payment_method}: ${description}` : payment_method,
-    source:        "manual",
-    captured_at:   received_at,
-    created_at:    now,
-    updated_at:    now,
+    status:         "paid",
+    payment_method,
+    notes:          description ? `${payment_method}: ${description}` : payment_method,
+    source:         "manual",
+    captured_at:    received_at,
+    created_at:     now,
+    updated_at:     now,
   }).select("id").single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const p = payment as { id: string };
 
-  // Update lead stage → won, ltv_inr += amount
-  const currentLtv = lead.ltv_inr ?? 0;
+  // ── Update lead stage + LTV ───────────────────────────────────
   await svc.from("leads").update({
     stage:      "won",
-    ltv_inr:    currentLtv + amount_inr,
+    ltv_inr:    (lead.ltv_inr ?? 0) + amount_inr,
     updated_at: now,
   }).eq("id", lead_id);
 
-  // Fire payment.captured so existing handler sends confirmation
-  await inngest.send({
-    name: "payment.captured",
-    data: { orgId: params.orgId, paymentId: p.id, leadId: lead_id },
-  });
+  // ── Get or create conversation, send AI message ───────────────
+  const conversationId = await getOrCreateConversation(params.orgId, lead_id, "manual");
 
-  return NextResponse.json({ payment_id: p.id });
+  const aiResult = await generatePaymentReceivedMessage({
+    leadFirstName: firstName,
+    amountInr:     amount_inr,
+    description:   desc,
+    voiceProfile:  vp,
+    orgId:         params.orgId,
+  }).catch(() => ({
+    content: `Payment received ${firstName ? `, ${firstName}` : ""}. ₹${amount_inr.toLocaleString("en-IN")} for ${desc} confirmed. Welcome — I'll be in touch with next steps.`,
+  }));
+
+  await insertOutboundMessage(conversationId, params.orgId, aiResult.content, "payment_received");
+
+  // ── Send email ────────────────────────────────────────────────
+  if (leadEmail) {
+    await sendEmail({
+      to:       leadEmail,
+      subject:  "Payment received — welcome!",
+      html:     paymentReceived({
+        leadName:    firstName || "there",
+        amount:      `₹${amount_inr.toLocaleString("en-IN")}`,
+        description: desc,
+        coachName:   orgName,
+      }),
+      orgId:    params.orgId,
+      leadId:   lead_id,
+      template: "paymentReceived",
+    }).catch(() => null);
+  }
+
+  return NextResponse.json({ payment_id: p.id, conversation_id: conversationId });
 }

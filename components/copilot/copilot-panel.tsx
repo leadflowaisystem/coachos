@@ -16,8 +16,10 @@ interface Props {
 }
 
 const SUGGESTIONS = [
-  "What should I focus on today?",
-  "Why aren't leads converting?",
+  "Show me my top 3 hottest leads",
+  "What's my revenue last week vs prior?",
+  "Which lead should I prioritize today?",
+  "What's my conversion rate this month?",
   "How do I price my new program?",
 ];
 

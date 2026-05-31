@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Search, Plus, Download, ChevronRight, X, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 
@@ -51,6 +52,7 @@ function formatDate(iso?: string | null) {
 }
 
 export function CrmView({ orgId, orgSlug, initialLeads }: Props) {
+  const router = useRouter();
   const [leads,       setLeads]       = React.useState<LeadRow[]>(initialLeads);
   const [search,      setSearch]      = React.useState("");
   const [stageFilter, setStageFilter] = React.useState("");
@@ -105,7 +107,24 @@ export function CrmView({ orgId, orgSlug, initialLeads }: Props) {
       setLeads((prev) => [data.lead, ...prev]);
       setShowAdd(false);
       setNewName(""); setNewHandle(""); setNewEmail(""); setNewStage("cold");
-      toast({ title: "Lead added", variant: "success" });
+
+      const convId = data.conversation_id as string | null;
+      if (convId) {
+        toast({
+          title:       "Lead added",
+          description: "Appears in Inbox now.",
+          action:      (
+            <button
+              onClick={() => router.push(`/org/${orgSlug}/inbox/${convId}`)}
+              className="text-xs font-semibold text-[var(--brand)] hover:underline"
+            >
+              Open in Inbox
+            </button>
+          ),
+        } as Parameters<typeof toast>[0]);
+      } else {
+        toast({ title: "Lead added", variant: "success" });
+      }
     } catch (err) {
       toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" });
     } finally {

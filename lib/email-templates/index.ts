@@ -74,3 +74,13 @@ export function revivalNudge(p: {
     <a href="${p.ctaUrl}" style="${btn}">Reconnect →</a>
   `);
 }
+
+export function paymentReceived(p: {
+  leadName: string; amount: string; description: string; coachName: string;
+}): string {
+  return wrap(`
+    <h1 style="${h1}">Payment received</h1>
+    <p style="${p}">Hi ${p.leadName}, your payment of ${p.amount} for <strong style="color:#E8E8EC">${p.description}</strong> has been confirmed.</p>
+    <p style="${p}">Welcome to the program. ${p.coachName} will be in touch shortly with next steps.</p>
+  `);
+}
