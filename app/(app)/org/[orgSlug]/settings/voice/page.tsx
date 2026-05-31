@@ -24,14 +24,15 @@ export default async function VoiceSettingsPage({
   const org = orgData as { id: string; name: string } | null;
   if (!org) notFound();
 
-  // Load existing voice profile
-  const service = createServiceClient();
-  const { data: voiceData } = await service
-    .from("voice_profiles")
-    .select("*")
-    .eq("org_id", org.id)
-    .single();
+  // Load existing voice profile and deep context
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const service = createServiceClient() as any;
+  const [voiceResult, deepCtxResult] = await Promise.all([
+    service.from("voice_profiles").select("*").eq("org_id", org.id).single(),
+    service.from("orgs").select("deep_context").eq("id", org.id).single(),
+  ]);
 
+  const voiceData = voiceResult.data;
   const voice = voiceData as {
     tone: string;
     offer: string;
@@ -40,6 +41,8 @@ export default async function VoiceSettingsPage({
     objections: string[];
     extra_context: string;
   } | null;
+
+  const deepContext = (deepCtxResult.data as { deep_context: Record<string,unknown> | null } | null)?.deep_context ?? {};
 
   return (
     <div className="max-w-lg mx-auto space-y-6">
@@ -56,6 +59,7 @@ export default async function VoiceSettingsPage({
         orgId={org.id}
         orgSlug={params.orgSlug}
         initial={voice}
+        initialDeepContext={deepContext}
       />
     </div>
   );

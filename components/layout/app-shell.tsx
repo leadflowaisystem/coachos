@@ -21,6 +21,7 @@ import {
   Gift,
   Wand2,
   Users,
+  Target,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -56,12 +57,13 @@ interface AppShellProps {
 
 /* ── Nav items — exactly per spec ── */
 const mainNav = [
-  { href: "process",   label: "Assistant",  icon: Wand2          },
-  { href: "inbox",     label: "Inbox",      icon: Inbox          },
-  { href: "crm",       label: "CRM",        icon: Users          },
-  { href: "bookings",  label: "Bookings",   icon: CalendarDays   },
-  { href: "payments",  label: "Payments",   icon: CreditCard     },
-  { href: "sequences", label: "Sequences",  icon: GitBranch      },
+  { href: "process",   label: "Assistant",  icon: Wand2           },
+  { href: "inbox",     label: "Inbox",      icon: Inbox           },
+  { href: "crm",       label: "CRM",        icon: Users           },
+  { href: "bookings",  label: "Bookings",   icon: CalendarDays    },
+  { href: "payments",  label: "Payments",   icon: CreditCard      },
+  { href: "sequences", label: "Sequences",  icon: GitBranch       },
+  { href: "coach",     label: "Coach",      icon: Target          },
   { href: "dashboard", label: "Dashboard",  icon: LayoutDashboard },
 ] as const;
 

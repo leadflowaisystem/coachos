@@ -11,6 +11,9 @@ import { onPaymentLinkMessage }      from "@/lib/inngest/functions/on-payment-li
 import { onGhostRevival }            from "@/lib/inngest/functions/on-ghost-revival";
 import { aggregateDailyMetrics }     from "@/lib/inngest/functions/daily-metrics";
 import { onWeeklyReport }            from "@/lib/inngest/functions/on-weekly-report";
+import { onDailyCheckin }            from "@/lib/inngest/functions/on-daily-checkin";
+import { onWeeklyScorecard }         from "@/lib/inngest/functions/on-weekly-scorecard";
+import { onMissedTaskCron }          from "@/lib/inngest/functions/on-missed-task-cron";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -26,5 +29,8 @@ export const { GET, POST, PUT } = serve({
     onGhostRevival,
     aggregateDailyMetrics,
     onWeeklyReport,
+    onDailyCheckin,
+    onWeeklyScorecard,
+    onMissedTaskCron,
   ],
 });

@@ -7,6 +7,8 @@ import { AppShell } from "@/components/layout/app-shell";
 import { TrialExpiredModal } from "@/components/layout/trial-expired-modal";
 import { FirstRunOverlay } from "@/components/onboarding/first-run-overlay";
 import { PushOptIn } from "@/components/push/push-opt-in";
+import { CopilotPanel } from "@/components/copilot/copilot-panel";
+import { MilestoneBanner } from "@/components/rewards/milestone-banner";
 
 interface Props {
   children: React.ReactNode;
@@ -108,11 +110,13 @@ export default async function OrgLayout({ children, params }: Props) {
         aiMsgsLimit={getPlanLimits(org.plan ?? "trial").aiMsgsPerMonth}
         orgSlug={params.orgSlug}
       />
+      <MilestoneBanner orgId={org.id} />
       {/* Push notification opt-in — only shows if VAPID configured and permission not yet decided */}
       {process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && (
         <PushOptIn orgId={org.id} orgSlug={params.orgSlug} vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY} />
       )}
       {children}
+      <CopilotPanel orgId={org.id} orgSlug={params.orgSlug} />
     </AppShell>
   );
 }

@@ -29,6 +29,12 @@ export interface AccessState {
   canUseUpiPayments:         boolean;
   canUseEmail:               boolean;
   canUseRevival:             boolean;
+  canUseCopilot:             boolean;
+  canUseAccountability:      boolean;
+  canUseTrends:              boolean;
+  canUseDeepContext:         boolean;
+  canUseRewards:             boolean;
+  copilotDailyLimit:         number;  // -1 = unlimited
   aiMsgsUsedThisMonth:       number;
   aiMsgsLimit:               number;    // -1 = unlimited
   reason?:                   "trial_expired" | "limit_reached" | "cancelled" | "past_due";
@@ -76,6 +82,12 @@ function buildState(org: OrgRow): AccessState {
   let canUseUpiPayments          = false;
   let canUseEmail                = false;
   let canUseRevival              = false;
+  let canUseCopilot              = false;
+  let canUseAccountability       = false;
+  let canUseTrends               = false;
+  let canUseDeepContext          = false;
+  let canUseRewards              = false;
+  let copilotDailyLimit          = 0;
   const canUseWhatsApp           = true; // free feature on all plans
   let reason: AccessState["reason"];
 
@@ -92,6 +104,12 @@ function buildState(org: OrgRow): AccessState {
       canUseUpiPayments          = true;
       canUseEmail                = true;
       canUseRevival              = true;
+      canUseCopilot              = true;
+      copilotDailyLimit          = 60;
+      canUseAccountability       = true;
+      canUseTrends               = false;
+      canUseDeepContext          = true;
+      canUseRewards              = true;
       if (!canSendAi) reason = "limit_reached";
       break;
 
@@ -106,6 +124,12 @@ function buildState(org: OrgRow): AccessState {
       canUseUpiPayments          = false;
       canUseEmail                = false;
       canUseRevival              = false;
+      canUseCopilot              = false;
+      copilotDailyLimit          = 0;
+      canUseAccountability       = false;
+      canUseTrends               = false;
+      canUseDeepContext          = false;
+      canUseRewards              = false;
       reason                     = "trial_expired";
       break;
 
@@ -124,15 +148,33 @@ function buildState(org: OrgRow): AccessState {
         canCreateFunnelPages = 1;
         canUseCRM            = 200;
         canUseRevival        = false;
+        canUseCopilot        = true;
+        copilotDailyLimit    = 60;
+        canUseAccountability = false;
+        canUseTrends         = false;
+        canUseDeepContext    = true;
+        canUseRewards        = true;
       } else if (plan === "growth") {
         canCreateFunnelPages = 3;
         canUseCRM            = 2000;
         canUseRevival        = true;
+        canUseCopilot        = true;
+        copilotDailyLimit    = 300;
+        canUseAccountability = true;
+        canUseTrends         = false;
+        canUseDeepContext    = true;
+        canUseRewards        = true;
       } else {
         // pro
         canCreateFunnelPages = -1;
         canUseCRM            = -1;
         canUseRevival        = true;
+        canUseCopilot        = true;
+        copilotDailyLimit    = -1;
+        canUseAccountability = true;
+        canUseTrends         = true;
+        canUseDeepContext    = true;
+        canUseRewards        = true;
       }
       if (!canSendAi) reason = "limit_reached";
       break;
@@ -148,6 +190,12 @@ function buildState(org: OrgRow): AccessState {
       canUseUpiPayments          = false;
       canUseEmail                = false;
       canUseRevival              = false;
+      canUseCopilot              = false;
+      copilotDailyLimit          = 0;
+      canUseAccountability       = false;
+      canUseTrends               = false;
+      canUseDeepContext          = false;
+      canUseRewards              = false;
       reason                     = "cancelled";
       break;
 
@@ -162,6 +210,12 @@ function buildState(org: OrgRow): AccessState {
       canUseUpiPayments          = false;
       canUseEmail                = false;
       canUseRevival              = false;
+      canUseCopilot              = false;
+      copilotDailyLimit          = 0;
+      canUseAccountability       = false;
+      canUseTrends               = false;
+      canUseDeepContext          = false;
+      canUseRewards              = false;
       reason                     = "past_due";
       break;
   }
@@ -182,6 +236,12 @@ function buildState(org: OrgRow): AccessState {
     canUseUpiPayments,
     canUseEmail,
     canUseRevival,
+    canUseCopilot,
+    canUseAccountability,
+    canUseTrends,
+    canUseDeepContext,
+    canUseRewards,
+    copilotDailyLimit,
     aiMsgsUsedThisMonth: org.monthly_ai_msg_count,
     aiMsgsLimit:         status === "trial_active" ? 2000 : limits.aiMsgsPerMonth,
     reason,
@@ -217,6 +277,12 @@ export async function getAccessState(orgId: string): Promise<AccessState> {
       canUseUpiPayments:         false,
       canUseEmail:               false,
       canUseRevival:             false,
+      canUseCopilot:             false,
+      canUseAccountability:      false,
+      canUseTrends:              false,
+      canUseDeepContext:         false,
+      canUseRewards:             false,
+      copilotDailyLimit:         0,
       aiMsgsUsedThisMonth:       0,
       aiMsgsLimit:               0,
       reason:                    "cancelled",
