@@ -4,8 +4,9 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   ExternalLink, User, CheckCircle2,
-  Clock, XCircle, AlertTriangle,
+  Clock, XCircle, AlertTriangle, Copy, Check,
 } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────
@@ -62,7 +63,35 @@ interface Props {
 }
 
 export function PaymentCard({ payment, onUpdate, isDev, orgId }: Props) {
-  const [acting, setActing] = useState<"capture" | "unpaid" | null>(null);
+  const [acting,  setActing]  = useState<"capture" | "unpaid" | "markpaid" | null>(null);
+  const [copied,  setCopied]  = useState(false);
+
+  async function copyLink() {
+    if (!payment.payment_link_url) return;
+    await navigator.clipboard.writeText(payment.payment_link_url).catch(() => null);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function markPaid() {
+    if (!orgId) return;
+    setActing("markpaid");
+    try {
+      const res = await fetch(`/api/orgs/${orgId}/payments/mark-paid`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ payment_id: payment.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      toast({ title: "Payment marked as received", description: "Receipt sent to lead's inbox.", variant: "success" });
+      onUpdate?.();
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" });
+    } finally {
+      setActing(null);
+    }
+  }
 
   const cfg  = STATUS_CONFIG[payment.status] ?? STATUS_CONFIG.pending;
   const Icon = cfg.icon;
@@ -148,14 +177,24 @@ export function PaymentCard({ payment, onUpdate, isDev, orgId }: Props) {
       {/* ── Actions row ── */}
       <div className="flex items-center gap-2">
         {payment.payment_link_url && payment.status === "pending" && (
-          <a
-            href={payment.payment_link_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-[var(--brand)] hover:underline"
-          >
-            <ExternalLink className="h-3 w-3" /> Open payment link
-          </a>
+          <div className="flex items-center gap-2 flex-wrap">
+            <a href={payment.payment_link_url} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-[var(--brand)] hover:underline">
+              <ExternalLink className="h-3 w-3" /> Open link
+            </a>
+            <button onClick={copyLink}
+              className="inline-flex items-center gap-1 text-xs text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors">
+              {copied ? <Check className="h-3 w-3 text-[var(--brand)]" /> : <Copy className="h-3 w-3" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+            {orgId && (
+              <button onClick={markPaid} disabled={acting === "markpaid"}
+                className="inline-flex items-center gap-1 text-xs text-[var(--text-3)] hover:text-[var(--brand)] transition-colors disabled:opacity-50">
+                <CheckCircle2 className="h-3 w-3" />
+                {acting === "markpaid" ? "Saving…" : "Mark as paid"}
+              </button>
+            )}
+          </div>
         )}
 
         {/* Dev-only inline actions */}

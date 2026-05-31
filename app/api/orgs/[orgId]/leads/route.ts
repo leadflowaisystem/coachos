@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sanitizeText } from "@/lib/sanitize";
+import { randomBytes } from "crypto";
 import { z } from "zod";
 
 interface Params { params: { orgId: string } }
@@ -82,7 +83,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svc = createServiceClient() as any;
 
-  const externalId = sanitizeText(handle ?? name).toLowerCase().replace(/\s+/g, "_").replace(/^@/, "");
+  // Manual CRM leads: always generate a unique external_id to avoid
+  // unique-constraint collisions on (org_id, channel, external_id).
+  // If a handle is provided, prefer that (it's a real IG handle), but
+  // append a random suffix so re-adding the same handle doesn't conflict.
+  const baseSlug  = sanitizeText(handle ?? name).toLowerCase().replace(/\s+/g, "_").replace(/^@/, "") || "lead";
+  const suffix    = randomBytes(4).toString("hex");
+  const externalId = handle
+    ? `${baseSlug}_${suffix}` // handle-based but unique
+    : `manual_${Date.now()}_${suffix}`;
 
   const { data: lead, error } = await svc.from("leads").insert({
     org_id:      params.orgId,
@@ -99,7 +108,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     updated_at:   now,
   }).select("id, name, stage, score").single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const isUnique = (error as { code?: string }).code === "23505";
+    return NextResponse.json(
+      { error: isUnique ? "A lead with this handle already exists in your CRM." : error.message },
+      { status: isUnique ? 409 : 500 }
+    );
+  }
   const newLead = lead as { id: string; name: string | null; stage: string; score: number };
 
   // ── Auto-create conversation so lead appears in /inbox immediately ──

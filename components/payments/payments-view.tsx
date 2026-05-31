@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { PaymentCard, type PaymentRow } from "./payment-card";
 import { SimulatePaymentSheet, type SimulateLead } from "./simulate-payment-sheet";
-import { ManualPaymentSheet } from "./manual-payment-sheet";
+import { PaymentActionsSheet } from "./payment-actions-sheet";
 import { cn } from "@/lib/utils";
 
 interface PendingPayment {
@@ -133,7 +133,7 @@ export function PaymentsView({
 
   const devBar = (
     <div className="flex flex-wrap items-center gap-2">
-      <ManualPaymentSheet orgId={orgId} leads={leads} onDone={handleUpdate} />
+      <PaymentActionsSheet orgId={orgId} leads={leads} onDone={handleUpdate} />
       {isDev && (
         <div className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-dashed border-amber-500/20 bg-amber-500/5 px-3 py-1.5">
           <span className="text-[11px] text-amber-500/70 font-mono uppercase tracking-wide">dev</span>
