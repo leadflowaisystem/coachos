@@ -328,6 +328,13 @@ export async function draftReply(params: {
     calLink:      params.calLink,
   });
 
+  console.log("[ai:draftReply] context:", {
+    calLink: !!params.calLink,
+    calLinkPrefix: params.calLink?.substring(0, 40) ?? null,
+    stage: params.stage,
+    score: params.score,
+  });
+
   const response = await callLLM({
     model:       MODEL_SMART,
     max_tokens:  320,
@@ -338,11 +345,17 @@ export async function draftReply(params: {
     ],
   });
 
-  const content   = response.choices[0]?.message?.content?.trim() ?? "…";
+  let content = response.choices[0]?.message?.content?.trim() ?? "…";
   const tokensIn  = response.usage?.prompt_tokens     ?? 0;
   const tokensOut = response.usage?.completion_tokens ?? 0;
   const p = priceFor(MODEL_SMART);
   const costInr = tokensIn * p.in + tokensOut * p.out;
+
+  // Safety net: if LLM was given a calLink but didn't embed it, force-append
+  if (params.calLink && !content.includes(params.calLink)) {
+    console.warn("[ai:draftReply] calLink not embedded by LLM — forcing append.");
+    content = content.replace(/[.!?]?\s*$/, "") + `\n\nBook a free discovery call: ${params.calLink}`;
+  }
 
   console.log(`[ai:draft] tokens=${tokensIn}+${tokensOut} cost=₹${costInr.toFixed(4)}`);
   await incrementUsage(params.orgId, tokensIn, tokensOut, costInr);
@@ -685,11 +698,16 @@ export async function draftReplyThree(params: {
           { role: "user",   content: "Write the reply now:" },
         ],
       });
-      const text = resp.choices[0]?.message?.content?.trim() ?? "…";
+      let text = resp.choices[0]?.message?.content?.trim() ?? "…";
       const tokensIn  = resp.usage?.prompt_tokens     ?? 0;
       const tokensOut = resp.usage?.completion_tokens ?? 0;
       const p = priceFor(MODEL_SMART);
       void incrementUsage(params.orgId, tokensIn, tokensOut, tokensIn * p.in + tokensOut * p.out);
+      // Direct angle MUST embed calUrl if provided
+      if (angle === "direct" && calUrl && !text.includes(calUrl)) {
+        console.warn("[ai:draftReplyThree] direct angle missing calUrl — forcing append.");
+        text = text.replace(/[.!?]?\s*$/, "") + `\n\nBook here: ${calUrl}`;
+      }
       return {
         angle,
         text,

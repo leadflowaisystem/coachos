@@ -21,7 +21,8 @@ export async function getCalLink(orgId: string): Promise<string | null> {
 
     if (!data?.active) return null;
     const config = (data.config as Record<string, unknown>) ?? {};
-    const url = (config.booking_url as string | undefined) ?? "";
+    // Settings page saves as cal_link; legacy/API uses booking_url — check both
+    const url = ((config.cal_link ?? config.booking_url) as string | undefined) ?? "";
     return url.trim() || null;
   } catch {
     return null;

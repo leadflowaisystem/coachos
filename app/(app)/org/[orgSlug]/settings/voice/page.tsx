@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { VoiceProfileForm } from "./voice-form-client";
+import { EmailPreview } from "@/components/settings/email-preview";
 
 export async function generateMetadata() {
   return { title: "Voice profile — CoachOS" };
@@ -61,6 +62,15 @@ export default async function VoiceSettingsPage({
         initial={voice}
         initialDeepContext={deepContext}
       />
+
+      {/* Email preview + test send */}
+      <div className="border-t border-[var(--border)] pt-6 space-y-2">
+        <h2 className="text-sm font-semibold text-[var(--text)]">Email templates</h2>
+        <p className="text-xs text-[var(--text-3)]">
+          Preview what your leads receive and send a test to your inbox.
+        </p>
+        <EmailPreview orgId={org.id} userEmail={user.email ?? undefined} />
+      </div>
     </div>
   );
 }

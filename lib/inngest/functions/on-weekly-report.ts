@@ -54,7 +54,7 @@ function weeklyReportHtml(p: {
 
 export const onWeeklyReport = inngest.createFunction(
   { id: "on-weekly-report", name: "Weekly: send coach performance email", retries: 0 },
-  { cron: "0 9 * * 1" }, // Every Monday 9 AM UTC
+  [{ cron: "0 9 * * 1" }, { event: "test/weekly-report.trigger" }], // cron + manual test trigger
   async ({ step }) => {
     const svc     = createServiceClient();
     const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? "https://coachos-pi.vercel.app";
@@ -69,7 +69,7 @@ export const onWeeklyReport = inngest.createFunction(
 
     const activeOrgs = (orgs ?? []) as { id: string; name: string; slug: string; plan: string; subscription_status: string }[];
 
-    let sent = 0;
+    const results: string[] = [];
     for (const org of activeOrgs) {
       await step.run(`report-${org.id}`, async () => {
         const [convR, msgR, bookR, showR, payR, prevPayR, memberR] = await Promise.all([
@@ -87,9 +87,15 @@ export const onWeeklyReport = inngest.createFunction(
         const ownerId     = (memberR.data as { user_id: string } | null)?.user_id;
         if (!ownerId) return;
 
-        // Get owner email from auth
-        const { data: { user } } = await svc.auth.admin.getUserById(ownerId);
-        const email = user?.email;
+        // Get owner email via auth admin API
+        let email: string | null = null;
+        try {
+          const { data: adminData } = await svc.auth.admin.getUserById(ownerId);
+          email = adminData?.user?.email ?? null;
+        } catch {
+          // auth.admin not available — skip this org silently
+          console.warn("[weekly-report] auth.admin.getUserById failed for", ownerId);
+        }
         if (!email) return;
 
         // count fields come from the response root, not .data, when head:true is used
@@ -116,7 +122,7 @@ export const onWeeklyReport = inngest.createFunction(
           to:       email,
           subject:  `Your CoachOS weekly report — ${now.toLocaleDateString("en-IN", { day: "numeric", month: "long" })}`,
           html:     weeklyReportHtml({
-            coachName:   (user?.user_metadata?.full_name as string | undefined) ?? "Coach",
+            coachName:   "Coach",
             orgName:     org.name,
             newLeads:    convCount,
             repliesSent: msgCount,
@@ -132,9 +138,9 @@ export const onWeeklyReport = inngest.createFunction(
           orgId:    org.id,
           template: "weeklyReport",
         }).catch(() => null);
-        sent++;
+        results.push(org.id);
       });
     }
-    return { sent };
+    return { sent: results.length };
   }
 );

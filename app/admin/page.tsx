@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { TriggerWeeklyReportBtn } from "./trigger-weekly-report-btn";
 
 export default async function AdminOrgsPage() {
   const svc = createServiceClient();
@@ -35,8 +36,9 @@ export default async function AdminOrgsPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="font-display text-2xl font-bold">Orgs ({orgs.length})</h1>
+        <TriggerWeeklyReportBtn />
         <div className="text-sm text-[var(--text-3)]">
           MRR: <span className="font-mono font-bold text-[var(--brand)]">₹{totalMrr.toLocaleString("en-IN")}</span>
         </div>

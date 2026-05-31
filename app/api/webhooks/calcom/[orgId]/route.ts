@@ -78,7 +78,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Cal.com wraps data in payload.payload or sends it flat
   const data = (payload.payload ?? payload) as Record<string, unknown>;
 
-  const svc = createServiceClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const svc = createServiceClient() as any;
   const orgId = params.orgId;
 
   // ── BOOKING_CREATED ─────────────────────────────────────────
@@ -191,11 +192,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: bookingErr.message }, { status: 500 });
     }
 
-    // Advance lead stage to "booked"
-    await svc.from("leads").update({
-      stage:      "booked",
-      updated_at: now,
-    }).eq("id", leadId);
+    // Advance lead stage to "booked" + capture attendee email if not already stored
+    const { data: existingLead } = await svc.from("leads").select("metadata").eq("id", leadId).single();
+    const existingMeta = (existingLead as { metadata?: Record<string, unknown> } | null)?.metadata ?? {};
+    const shouldSaveEmail = attendee.email && !existingMeta.email;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const leadUpdate: Record<string, any> = { stage: "booked", updated_at: now };
+    if (shouldSaveEmail) leadUpdate.metadata = { ...existingMeta, email: attendee.email };
+
+    await svc.from("leads").update(leadUpdate).eq("id", leadId);
 
     // Emit Inngest events — reminders pipeline + immediate confirmation message
     if (booking?.id) {
