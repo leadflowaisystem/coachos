@@ -1,11 +1,15 @@
 /**
  * POST /api/auth/magic-link
  *
- * Server-side magic link sender with:
- * - Rate limit: 5 requests per 15 min per IP
- * - Disposable email blocklist
- * - Audit log entry
- * - Delegates actual send to Supabase (signInWithOtp via admin client)
+ * Server-side magic link sender:
+ * 1. Rate limit: 5 requests per 15 min per IP
+ * 2. Disposable email blocklist
+ * 3. Generates link via Supabase Admin API
+ * 4. Emails the link via Brevo SMTP (lib/email.ts)
+ * 5. Audit log entry
+ *
+ * NOTE: admin.generateLink generates the URL but does NOT send the email.
+ * We send it ourselves via Brevo for full control + SMTP independence.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -13,11 +17,12 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { rateLimitAsync, getIp } from "@/lib/ratelimit";
 import { isDisposableEmail } from "@/lib/disposable-domains";
 import { logAudit } from "@/lib/audit";
+import { sendEmail } from "@/lib/email";
 import { z } from "zod";
 
 const Schema = z.object({
-  email:       z.string().email("Invalid email address").max(254),
-  redirectTo:  z.string().url().optional(),
+  email:      z.string().email("Invalid email address").max(254),
+  redirectTo: z.string().url().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -32,15 +37,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.json().catch(() => ({}));
+  const body   = await req.json().catch(() => ({}));
   const parsed = Schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 });
   }
 
   const { email, redirectTo } = parsed.data;
+  console.log("[magic-link] request for:", email, "| ip:", ip);
 
-  // Reject disposable email domains
   if (isDisposableEmail(email)) {
     return NextResponse.json(
       { error: "Please use a permanent email address. Disposable email addresses are not accepted." },
@@ -48,28 +53,70 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const svc = createServiceClient();
-
-  // Send magic link via Supabase (service role bypasses email-send restrictions)
+  const svc    = createServiceClient();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://coachos-pi.vercel.app";
-  const { error } = await svc.auth.admin.generateLink({
+  const cbUrl  = redirectTo ?? `${appUrl}/auth/callback`;
+
+  // Generate the magic link URL (does NOT send email — we send it below via Brevo)
+  const { data: linkData, error } = await svc.auth.admin.generateLink({
     type:    "magiclink",
     email,
-    options: { redirectTo: redirectTo ?? `${appUrl}/auth/callback` },
+    options: { redirectTo: cbUrl },
   });
 
-  // Always log the attempt (success or failure)
+  console.log("[magic-link] generateLink result:", { ok: !error, error: error?.message });
+
   void logAudit(svc, null, null, "auth.magic_link_request", {
     email_domain: email.split("@")[1],
     ip,
-    user_agent: req.headers.get("user-agent")?.slice(0, 200),
-    success: !error,
+    user_agent:   req.headers.get("user-agent")?.slice(0, 200),
+    success:      !error,
   });
 
-  if (error) {
-    console.error("[magic-link] Supabase error:", error.message);
-    // Don't expose internal errors — return generic message
-    return NextResponse.json({ error: "Could not send magic link. Please try again." }, { status: 500 });
+  if (error || !linkData?.properties?.action_link) {
+    console.error("[magic-link] Supabase generateLink error:", error?.message);
+    return NextResponse.json(
+      { error: "Could not generate magic link. Please try again or use email/password." },
+      { status: 500 }
+    );
+  }
+
+  const actionLink = linkData.properties.action_link;
+  console.log("[magic-link] action_link generated, sending email to:", email);
+
+  // Send via Brevo SMTP
+  try {
+    await sendEmail({
+      to:       email,
+      subject:  "Sign in to CoachOS",
+      template: "magic_link",
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
+          <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Sign in to CoachOS</h2>
+          <p style="color:#555;margin-bottom:24px">Click the button below to sign in. This link expires in 1 hour.</p>
+          <a href="${actionLink}"
+             style="display:inline-block;background:#C1F15C;color:#0A0A0C;padding:12px 28px;border-radius:8px;font-weight:700;text-decoration:none;font-size:15px">
+            Sign in to CoachOS →
+          </a>
+          <p style="color:#999;font-size:12px;margin-top:32px">
+            Or copy this link:<br/>
+            <a href="${actionLink}" style="color:#888;word-break:break-all">${actionLink}</a>
+          </p>
+          <p style="color:#ccc;font-size:11px;margin-top:16px">
+            If you didn't request this, you can safely ignore this email.
+          </p>
+        </div>
+      `,
+    });
+    console.log("[magic-link] email sent successfully to:", email);
+  } catch (emailErr) {
+    console.error("[magic-link] Brevo send failed:", emailErr);
+    // Still return success — link was generated, but email failed.
+    // User can try again or use email/password.
+    return NextResponse.json(
+      { error: "Magic link generated but email delivery failed. Check SMTP config or use email/password login." },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ ok: true });

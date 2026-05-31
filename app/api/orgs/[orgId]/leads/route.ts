@@ -60,15 +60,20 @@ export async function GET(req: NextRequest, { params }: Params) {
 const CreateSchema = z.object({
   name:         z.string().min(1).max(200),
   handle:       z.string().max(100).optional(),
+  phone:        z.string().max(20).optional(),
   email:        z.string().email().optional().or(z.literal("")),
   channel:      z.string().max(50).optional(),
   stage:        z.string().max(30).optional(),
   score:        z.number().min(0).max(100).optional(),
   tags:         z.array(z.string()).optional(),
   notes:        z.string().max(5000).optional(),
+  source:       z.string().max(50).optional(),
   firstMessage: z.string().max(2000).optional(),
   context:      z.string().max(500).optional(),
-});
+}).refine(
+  (d) => !!(d.handle?.trim() || d.phone?.trim() || d.channel),
+  { message: "Either Instagram handle or phone number is required", path: ["handle"] }
+);
 
 export async function POST(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
@@ -94,36 +99,46 @@ export async function POST(req: NextRequest, { params }: Params) {
   const parsed = CreateSchema.safeParse(raw);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
 
-  const { name, handle, email, channel, stage, score, tags, notes } = parsed.data;
+  const { name, handle, phone, email, channel, stage, score, tags, notes, source } = parsed.data;
   const now = new Date().toISOString();
   // Cast to any — tags/notes/ltv_inr added in migration 012, not yet in generated types
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svc = createServiceClient() as any;
 
-  // Manual CRM leads: always generate a unique external_id to avoid
-  // unique-constraint collisions on (org_id, channel, external_id).
-  // If a handle is provided, prefer that (it's a real IG handle), but
-  // append a random suffix so re-adding the same handle doesn't conflict.
-  const baseSlug  = sanitizeText(handle ?? name).toLowerCase().replace(/\s+/g, "_").replace(/^@/, "") || "lead";
-  const suffix    = randomBytes(4).toString("hex");
-  const externalId = handle
-    ? `${baseSlug}_${suffix}` // handle-based but unique
-    : `manual_${Date.now()}_${suffix}`;
+  // Generate a unique external_id that encodes the contact type.
+  // Always add a random suffix to avoid unique constraint conflicts.
+  const suffix = randomBytes(4).toString("hex");
+  let externalId: string;
+  if (handle) {
+    const clean = sanitizeText(handle).toLowerCase().replace(/^@/, "").replace(/\s+/g, "_") || "handle";
+    externalId = `ig_${clean}_${suffix}`;
+  } else if (phone) {
+    const clean = phone.replace(/[^0-9+]/g, "").replace(/^\+/, "");
+    externalId = `wa_${clean}_${suffix}`;
+  } else {
+    externalId = `manual_${Date.now()}_${suffix}`;
+  }
+
+  // Build metadata including all contact fields
+  const metadata: Record<string, string> = {};
+  if (email)  metadata.email            = email;
+  if (handle) metadata.instagram_handle = handle.replace(/^@/, "");
+  if (phone)  metadata.phone            = phone;
 
   const { data: lead, error } = await svc.from("leads").insert({
     org_id:      params.orgId,
     name:        sanitizeText(name),
     external_id: externalId,
-    channel:     channel ?? "manual",
+    channel:     handle ? "instagram" : phone ? "whatsapp" : (channel ?? "manual"),
     stage:       stage   ?? "cold",
     score:       score   ?? 0,
-    source:      "manual",
+    source:      source  ?? "manual",
     tags:        tags    ?? [],
     notes:       sanitizeText(notes) || null,
-    metadata:    email ? { email } : {},
+    metadata,
     last_seen_at: now,
     updated_at:   now,
-  }).select("id, name, stage, score").single();
+  }).select("id, name, stage, score, external_id, channel, tags, ltv_inr, last_seen_at, created_at, source, metadata").single();
 
   if (error) {
     const isUnique = (error as { code?: string }).code === "23505";
