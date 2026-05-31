@@ -26,11 +26,12 @@ function sanitize(text: string): string {
 export interface QualifyInput {
   messages: Array<{ direction: "inbound" | "outbound"; content: string }>;
   voiceProfile: {
-    tone:        string;
-    offer:       string;
-    price_range: string;
-    sells:       string;
-    objections:  string[];
+    tone:          string;
+    offer:         string;
+    price_range:   string;
+    sells:         string;
+    objections:    string[];
+    extra_context?: string;
   } | null;
 }
 
@@ -41,9 +42,10 @@ export function buildQualifyPrompt(input: QualifyInput): {
   const vp = input.voiceProfile;
 
   // Fill template vars — fall back to sensible defaults when profile is empty
-  const offer        = vp?.offer       || "coaching services";
-  const priceRange   = vp?.price_range || "not specified";
-  const problemSolved = vp?.sells      || "coaching clients to grow and achieve their goals";
+  const offer         = vp?.offer         || "coaching services";
+  const priceRange    = vp?.price_range   || "not specified";
+  const problemSolved = vp?.sells         || "coaching clients to grow and achieve their goals";
+  const extraCtx      = vp?.extra_context || "";
 
   const system =
 `You are a lead qualification engine for an Instagram coaching business. You read ONE \
@@ -53,7 +55,7 @@ Output ONLY valid JSON, nothing else.
 Coach context:
 - Sells: ${offer}
 - Price range: ${priceRange}
-- Helps: ${problemSolved}
+- Helps: ${problemSolved}${extraCtx ? `\n- Additional context: ${extraCtx.slice(0, 300)}` : ""}
 
 Score exactly one:
 - "hot": clear buying intent. Asks price, asks how to start/join, asks to talk or book a \

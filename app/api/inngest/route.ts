@@ -14,6 +14,8 @@ import { onWeeklyReport }            from "@/lib/inngest/functions/on-weekly-rep
 import { onDailyCheckin }            from "@/lib/inngest/functions/on-daily-checkin";
 import { onWeeklyScorecard }         from "@/lib/inngest/functions/on-weekly-scorecard";
 import { onMissedTaskCron }          from "@/lib/inngest/functions/on-missed-task-cron";
+import { onTrialExpiry }             from "@/lib/inngest/functions/on-trial-expiry";
+import { onMonthlyReset }            from "@/lib/inngest/functions/on-monthly-reset";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -32,5 +34,7 @@ export const { GET, POST, PUT } = serve({
     onDailyCheckin,
     onWeeklyScorecard,
     onMissedTaskCron,
+    onTrialExpiry,
+    onMonthlyReset,
   ],
 });

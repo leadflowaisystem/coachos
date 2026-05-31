@@ -19,6 +19,55 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { isTrialExpired, getPlanLimits } from "@/lib/plan";
 import { getAccessState }               from "@/lib/access";
 
+// ── Deep context types + helper ───────────────────────────────────
+export interface DeepContext {
+  target_audience?:        string;
+  transformation_stories?: string[];
+  common_objections?:      string;
+  unique_methodology?:     string;
+  pricing_philosophy?:     string;
+  content_pillars?:        string[];
+  calendar_preferences?:   string;
+  extra_context?:          string;
+}
+
+/**
+ * Formats selected deep-context fields into a concise text block for
+ * injection into AI prompts. Only includes fields in `include`.
+ */
+export function buildContextString(
+  ctx: DeepContext | null | undefined,
+  include: (keyof DeepContext)[]
+): string {
+  if (!ctx || Object.keys(ctx).length === 0) return "";
+  const lines: string[] = [];
+  for (const key of include) {
+    const val = ctx[key];
+    if (!val) continue;
+    if (Array.isArray(val) && val.length === 0) continue;
+    const label = key.replace(/_/g, " ");
+    lines.push(`${label}: ${Array.isArray(val) ? val.join(", ") : val}`);
+  }
+  return lines.length > 0 ? `[Deep context]\n${lines.join("\n")}` : "";
+}
+
+/**
+ * Fetches orgs.deep_context for an orgId. Returns null if not set.
+ * Cached per-request via module-level Map (cleared on cold start).
+ */
+const _deepCtxCache = new Map<string, DeepContext | null>();
+export async function fetchDeepContext(orgId: string): Promise<DeepContext | null> {
+  if (_deepCtxCache.has(orgId)) return _deepCtxCache.get(orgId) ?? null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = createServiceClient() as any;
+    const { data } = await svc.from("orgs").select("deep_context").eq("id", orgId).single();
+    const ctx = (data as { deep_context: DeepContext | null } | null)?.deep_context ?? null;
+    _deepCtxCache.set(orgId, ctx);
+    return ctx;
+  } catch { return null; }
+}
+
 // ── Plan-gating error ─────────────────────────────────────────────
 export class AiBlockedError extends Error {
   constructor(public reason: "trial_expired" | "limit_reached" | "cancelled") {
@@ -174,11 +223,15 @@ export async function qualifyLead(params: {
   messages:     ConvMsg[];
   voiceProfile: VoiceProf;
   orgId:        string;
+  deepContext?: DeepContext | null;
 }): Promise<QualifyResult> {
   if (!process.env.LLM_API_KEY) {
     console.warn("[ai] LLM_API_KEY not set — skipping qualification.");
     return { score: 20, stage: "cold", reasoning: "No LLM key configured.", tokensIn: 0, tokensOut: 0, costInr: 0 };
   }
+
+  const dc = params.deepContext ?? await fetchDeepContext(params.orgId);
+  const ctxBlock = buildContextString(dc, ["target_audience", "common_objections"]);
 
   const { system, user } = buildQualifyPrompt({
     messages: params.messages,
@@ -189,6 +242,7 @@ export async function qualifyLead(params: {
           price_range: params.voiceProfile.price_range,
           sells:       params.voiceProfile.sells,
           objections:  params.voiceProfile.objections,
+          extra_context: ctxBlock || params.voiceProfile.extra_context,
         }
       : null,
   });
@@ -246,6 +300,7 @@ export async function draftReply(params: {
   stage:        string;
   orgId:        string;
   calLink?:     string | null;
+  deepContext?: DeepContext | null;
 }): Promise<DraftResult> {
   if (!process.env.LLM_API_KEY) {
     console.warn("[ai] LLM_API_KEY not set — skipping draft.");
@@ -255,9 +310,19 @@ export async function draftReply(params: {
   // Gate on plan limits — throws AiBlockedError if over limit / trial expired
   await assertAiNotBlocked(params.orgId);
 
+  const dc = params.deepContext ?? await fetchDeepContext(params.orgId);
+  const ctxBlock = buildContextString(dc, [
+    "target_audience", "transformation_stories", "unique_methodology",
+    "common_objections", "pricing_philosophy",
+  ]);
+
+  const enrichedVp = params.voiceProfile
+    ? { ...params.voiceProfile, extra_context: [params.voiceProfile.extra_context, ctxBlock].filter(Boolean).join("\n") }
+    : null;
+
   const { system, user } = buildDraftPrompt({
     messages:     params.messages,
-    voiceProfile: params.voiceProfile,
+    voiceProfile: enrichedVp,
     score:        params.score,
     stage:        params.stage,
     calLink:      params.calLink,
@@ -564,8 +629,15 @@ export async function draftReplyThree(params: {
   orgId:         string;
   calLink?:      string | null;
   funnelUrl?:    string | null;
+  deepContext?:  DeepContext | null;
 }): Promise<ThreeReplyResult[]> {
   await assertAiNotBlocked(params.orgId);
+
+  const dc = params.deepContext ?? await fetchDeepContext(params.orgId);
+  const ctxBlock = buildContextString(dc, [
+    "target_audience", "transformation_stories", "unique_methodology",
+    "common_objections", "content_pillars",
+  ]);
 
   const vp = params.voiceProfile;
   const baseSystem = [
@@ -573,6 +645,7 @@ export async function draftReplyThree(params: {
     `Coach tone: ${vp?.tone ?? "warm, direct, professional"}`,
     vp?.sells ? `What they sell: ${vp.sells}` : "",
     vp?.offer ? `The offer: ${vp.offer}` : "",
+    ctxBlock  ? ctxBlock : "",
     `Lead: ${params.leadFirstName}${params.leadHandle ? " (@" + params.leadHandle + ")" : ""}`,
     params.context ? `Context about this lead: ${params.context}` : "",
     `Lead message: "${params.message}"`,
