@@ -34,9 +34,14 @@ function inMemoryLimit(id: string, limit: number, windowMs: number) {
 
 /* ── Upstash sliding-window (lazy-initialised) ───────────────── */
 let upstashLimiters: Map<string, unknown> | null = null;
-let upstashReady    = false;
 
-async function getUpstashLimiter(limit: number) {
+function msToUpstashDuration(ms: number): string {
+  if (ms < 60_000)     return `${Math.round(ms / 1_000)} s`;
+  if (ms < 3_600_000)  return `${Math.round(ms / 60_000)} m`;
+  return `${Math.round(ms / 3_600_000)} h`;
+}
+
+async function getUpstashLimiter(limit: number, windowMs: number) {
   const url   = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
@@ -45,17 +50,15 @@ async function getUpstashLimiter(limit: number) {
     const { Redis }     = await import("@upstash/redis");
     const { Ratelimit } = await import("@upstash/ratelimit");
 
-    if (!upstashLimiters) {
-      upstashLimiters = new Map();
-      upstashReady    = true;
-    }
+    if (!upstashLimiters) upstashLimiters = new Map();
 
-    const key = String(limit);
+    const key = `${limit}:${windowMs}`;
     if (!upstashLimiters.has(key)) {
       const redis = new Redis({ url, token });
       upstashLimiters.set(key, new Ratelimit({
         redis,
-        limiter:   Ratelimit.slidingWindow(limit, "1 m"),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        limiter:   Ratelimit.slidingWindow(limit, msToUpstashDuration(windowMs) as any),
         prefix:    "coachos:rl",
         analytics: false,
       }));
@@ -76,9 +79,9 @@ const DEFAULT_WINDOW = 60_000;
  */
 export async function rateLimitAsync(
   identifier: string,
-  { limit = DEFAULT_LIMIT }: { limit?: number } = {}
+  { limit = DEFAULT_LIMIT, windowMs = DEFAULT_WINDOW }: { limit?: number; windowMs?: number } = {}
 ): Promise<{ allowed: boolean; remaining: number }> {
-  const limiter = await getUpstashLimiter(limit);
+  const limiter = await getUpstashLimiter(limit, windowMs);
   if (limiter) {
     try {
       const { success, remaining } = await limiter.limit(identifier);
@@ -87,7 +90,7 @@ export async function rateLimitAsync(
       // Upstash hiccup — fall through to in-memory
     }
   }
-  return inMemoryLimit(identifier, limit, DEFAULT_WINDOW);
+  return inMemoryLimit(identifier, limit, windowMs);
 }
 
 /**

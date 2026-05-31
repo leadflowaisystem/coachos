@@ -9,7 +9,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Instagram, CalendarDays, CreditCard, Mic, Receipt, Users,
-  ChevronRight, CheckCircle2, Circle, Lock,
+  Shield, UserX, ChevronRight, CheckCircle2, Circle, Lock,
 } from "lucide-react";
 
 interface Props { params: { orgSlug: string } }
@@ -113,6 +113,24 @@ export default async function SettingsIndexPage({ params }: Props) {
       statusLabel: org.plan === "trial"     ? "Free trial"
                  : org.plan === "cancelled" ? "Cancelled"
                  : org.plan.charAt(0).toUpperCase() + org.plan.slice(1),
+    },
+    {
+      key: "security",
+      href: `settings/security`,
+      icon: <Shield className="h-5 w-5" />,
+      title: "Security",
+      description: "Enable two-factor authentication for an extra layer of account protection.",
+      status:      "not_connected",
+      statusLabel: "Configure",
+    },
+    {
+      key: "account",
+      href: `settings/account`,
+      icon: <UserX className="h-5 w-5" />,
+      title: "Account",
+      description: "Export your data or permanently delete this workspace.",
+      status:      "not_connected",
+      statusLabel: "Manage",
     },
     {
       key: "team",

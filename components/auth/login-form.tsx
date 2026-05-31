@@ -9,23 +9,24 @@ export function LoginForm() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createClient();
+  const supabase = createClient(); // still needed for OAuth (Google)
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${location.origin}/auth/callback`,
-      },
+    // Use server-side route for rate limiting + disposable email check
+    const res = await fetch("/api/auth/magic-link", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ email, redirectTo: `${location.origin}/auth/callback` }),
     });
+    const data = await res.json().catch(() => ({}));
 
     setLoading(false);
-    if (error) {
-      setError(error.message);
+    if (!res.ok) {
+      setError(data.error ?? "Could not send magic link. Please try again.");
     } else {
       setSent(true);
     }

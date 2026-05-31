@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sanitizeText } from "@/lib/sanitize";
+import { getAccessState } from "@/lib/access";
 import { z } from "zod";
 
 interface Params { params: { orgId: string } }
@@ -19,9 +20,16 @@ async function assertMember(orgId: string) {
   return data ? user : null;
 }
 
+async function assertAccountability(orgId: string) {
+  const a = await getAccessState(orgId);
+  return a.canUseAccountability ? null : NextResponse.json({ error: "Accountability Coach requires Growth plan or above." }, { status: 403 });
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await assertAccountability(params.orgId);
+  if (gate) return gate;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svc = createServiceClient() as any;
@@ -45,6 +53,8 @@ const CreateSchema = z.object({
 export async function POST(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await assertAccountability(params.orgId);
+  if (gate) return gate;
 
   const raw    = await req.json().catch(() => ({}));
   const parsed = CreateSchema.safeParse(raw);

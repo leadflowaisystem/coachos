@@ -8,6 +8,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { rateLimitAsync } from "@/lib/ratelimit";
 import { sanitizeText } from "@/lib/sanitize";
 import { extractEntities, fetchRelevantData, buildContextPrompt } from "@/lib/copilot-context";
+import { getAccessState } from "@/lib/access";
 import { z } from "zod";
 import OpenAI from "openai";
 
@@ -30,8 +31,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { allowed } = await rateLimitAsync(`copilot:${params.orgId}`, { limit: 60 });
-  if (!allowed) return NextResponse.json({ error: "Rate limit reached." }, { status: 429 });
+  const access = await getAccessState(params.orgId);
+  if (!access.canUseCopilot) {
+    return NextResponse.json({ error: "Copilot is not available on your current plan. Upgrade to access Ace." }, { status: 403 });
+  }
+
+  const msgLimit = access.copilotDailyLimit > 0 ? access.copilotDailyLimit : 60;
+  const { allowed } = await rateLimitAsync(`copilot:${params.orgId}`, { limit: msgLimit });
+  if (!allowed) return NextResponse.json({ error: "Daily copilot message limit reached. Resets tomorrow." }, { status: 429 });
 
   const raw    = await req.json().catch(() => ({}));
   const parsed = Schema.safeParse(raw);

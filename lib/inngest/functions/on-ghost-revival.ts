@@ -16,6 +16,7 @@ import { sendChannelMessage, getCalLink } from "@/lib/booking";
 import { generateRevivalNudge } from "@/lib/ai";
 import { sendEmail } from "@/lib/email";
 import { revivalNudge as revivalNudgeTemplate } from "@/lib/email-templates";
+import { getAccessState } from "@/lib/access";
 
 interface GhostRevivalData {
   orgId:          string;
@@ -39,6 +40,13 @@ export const onGhostRevival = inngest.createFunction(
     const {
       orgId, leadId, conversationId, sequenceRunId, startedAt, inactiveDays,
     } = event.data as GhostRevivalData;
+
+    // Plan gate — Growth+ only. Check before doing any work.
+    const access = await getAccessState(orgId);
+    if (!access.canUseRevival) {
+      console.log(`[ghost-revival] skipping org ${orgId} — canUseRevival=false on ${access.plan} plan`);
+      return { skipped: true, reason: "canUseRevival=false" };
+    }
 
     const delayMs = process.env.TEST_REVIVAL_DELAY_MS
       ? parseInt(process.env.TEST_REVIVAL_DELAY_MS, 10)

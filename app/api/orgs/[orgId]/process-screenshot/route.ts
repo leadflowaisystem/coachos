@@ -35,6 +35,19 @@ export interface ThreadResult {
   suggested_payment_url: string | null;
 }
 
+// ── Image MIME validation (magic bytes) ──────────────────────
+function isAllowedImageType(buf: Buffer): boolean {
+  if (buf.length < 8) return false;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true;
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;
+  // WebP: 52 49 46 46 ?? ?? ?? ?? 57 45 42 50
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return true;
+  return false;
+}
+
 // ── OCR helpers ─────────────────────────────────────────────
 /**
  * Extract Instagram DM thread previews from raw OCR text.
@@ -148,8 +161,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
       imageBuffer = Buffer.from(body);
     }
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: "Could not read image data" }, { status: 400 });
+  }
+
+  // ── Validate image magic bytes (PNG, JPEG, WebP) ──────────
+  if (!isAllowedImageType(imageBuffer)) {
+    return NextResponse.json(
+      { error: "Unsupported file type. Please upload a PNG, JPEG, or WebP screenshot." },
+      { status: 415 }
+    );
   }
 
   // ── OCR with Tesseract.js ─────────────────────────────────

@@ -60,8 +60,9 @@ const nextConfig = {
         value: "strict-origin-when-cross-origin",
       },
       {
+        // camera + mic allowed on self (needed for voice recording / future video calls)
         key:   "Permissions-Policy",
-        value: "camera=(), microphone=(), geolocation=()",
+        value: "camera=(self), microphone=(self), geolocation=()",
       },
     ];
 

@@ -73,6 +73,22 @@ export async function POST(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // ── Plan gate: CRM lead limit ──────────────────────────────────
+  const { getAccessState: _getAccess } = await import("@/lib/access");
+  const access = await _getAccess(params.orgId);
+  if (access.canUseCRM === 0) {
+    return NextResponse.json({ error: "CRM requires Starter plan or above." }, { status: 403 });
+  }
+  if (access.canUseCRM > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cntResult = await (createServiceClient() as any)
+      .from("leads").select("id", { count: "exact", head: true })
+      .eq("org_id", params.orgId).is("deleted_at", null);
+    if ((cntResult.count ?? 0) >= access.canUseCRM) {
+      return NextResponse.json({ error: `Lead limit reached (${access.canUseCRM} on your plan). Upgrade to add more.` }, { status: 403 });
+    }
+  }
+
   const raw    = await req.json().catch(() => ({}));
   const parsed = CreateSchema.safeParse(raw);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
