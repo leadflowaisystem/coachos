@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sanitizeText } from "@/lib/sanitize";
+import { getOrCreateConversation, insertOutboundMessage } from "@/lib/conversation";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 
@@ -134,29 +135,17 @@ export async function POST(req: NextRequest, { params }: Params) {
   const newLead = lead as { id: string; name: string | null; stage: string; score: number };
 
   // ── Auto-create conversation so lead appears in /inbox immediately ──
+  // Uses getOrCreateConversation to handle the unique(org_id, lead_id, channel_provider)
+  // constraint gracefully — returns existing conversation if one already exists.
   let conversationId: string | null = null;
   try {
-    const { data: conv } = await svc.from("conversations").insert({
-      org_id:               params.orgId,
-      lead_id:              newLead.id,
-      channel_provider:     "manual_crm",
-      status:               "active",
-      last_message_at:      now,
-      last_message_preview: "",
-    }).select("id").single();
-    conversationId = (conv as { id: string } | null)?.id ?? null;
-
-    if (conversationId) {
-      await svc.from("messages").insert({
-        conversation_id: conversationId,
-        org_id:          params.orgId,
-        direction:       "system",
-        content:         "Lead added via CRM.",
-        sent_at:         now,
-        metadata:        { source: "crm" },
-      });
-    }
-  } catch { /* non-fatal — lead is created, conversation auto-create best-effort */ }
+    conversationId = await getOrCreateConversation(params.orgId, newLead.id, "manual_crm");
+    // direction must be 'outbound' (messages table CHECK constraint: 'inbound'|'outbound')
+    await insertOutboundMessage(conversationId, params.orgId, "Lead added via CRM.", "crm");
+  } catch (e) {
+    // Non-fatal — lead is created; log so we can debug if it fails
+    console.error("[leads/POST] conversation auto-create failed:", e);
+  }
 
   return NextResponse.json({ lead: newLead, conversation_id: conversationId });
 }

@@ -12,6 +12,7 @@ import { getOrCreateConversation, insertOutboundMessage } from "@/lib/conversati
 import { sendEmail } from "@/lib/email";
 import { paymentReceived } from "@/lib/email-templates";
 import { getLeadFirstName } from "@/lib/leads";
+import { withErrorHandler } from "@/lib/api-handler";
 import { z } from "zod";
 
 export const maxDuration = 30;
@@ -35,7 +36,7 @@ const Schema = z.object({
   description:    z.string().max(500).optional(),
 });
 
-export async function POST(req: NextRequest, { params }: Params) {
+async function handler(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -126,3 +127,5 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   return NextResponse.json({ payment_id: p.id, conversation_id: conversationId });
 }
+
+export const POST = withErrorHandler("payments/manual", handler);

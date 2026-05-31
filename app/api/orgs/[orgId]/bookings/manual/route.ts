@@ -14,6 +14,7 @@ import { sendEmail } from "@/lib/email";
 import { bookingConfirmation } from "@/lib/email-templates";
 import { getLeadFirstName, formatMeetingTime } from "@/lib/leads";
 import { getCalLink } from "@/lib/booking";
+import { withErrorHandler } from "@/lib/api-handler";
 import { z } from "zod";
 
 export const maxDuration = 30;
@@ -36,7 +37,7 @@ const Schema = z.object({
   notes:       z.string().max(2000).optional(),
 });
 
-export async function POST(req: NextRequest, { params }: Params) {
+async function handler(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -142,3 +143,5 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   return NextResponse.json({ booking_id: b.id, conversation_id: conversationId });
 }
+
+export const POST = withErrorHandler("bookings/manual", handler);

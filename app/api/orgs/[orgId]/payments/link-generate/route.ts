@@ -7,10 +7,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createPaymentLink } from "@/lib/razorpay";
 import { inngest } from "@/lib/inngest/client";
-import { getOrCreateConversation } from "@/lib/conversation";
+import { getOrCreateConversation, insertOutboundMessage } from "@/lib/conversation";
+import { generatePaymentLinkMessage } from "@/lib/ai";
 import { sendEmail } from "@/lib/email";
 import { paymentLink as paymentLinkEmail } from "@/lib/email-templates";
 import { getLeadFirstName } from "@/lib/leads";
+import { withErrorHandler } from "@/lib/api-handler";
 import { z } from "zod";
 
 interface Params { params: { orgId: string } }
@@ -31,7 +33,7 @@ const Schema = z.object({
   method:      z.enum(["razorpay", "upi", "auto"]).default("auto"),
 });
 
-export async function POST(req: NextRequest, { params }: Params) {
+async function handler(req: NextRequest, { params }: Params) {
   const user = await assertMember(params.orgId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -45,11 +47,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const svc = createServiceClient() as any;
 
-  // Load org + integrations in parallel
-  const [orgRes, rzpRes, leadRes] = await Promise.all([
+  // Load org + integrations + voice profile in parallel
+  const [orgRes, rzpRes, leadRes, vpRes] = await Promise.all([
     svc.from("orgs").select("name, upi_id").eq("id", params.orgId).single(),
     svc.from("integrations").select("config, active").eq("org_id", params.orgId).eq("provider", "razorpay").eq("active", true).maybeSingle(),
     svc.from("leads").select("id, name, external_id, metadata").eq("id", lead_id).eq("org_id", params.orgId).single(),
+    svc.from("voice_profiles").select("tone, offer, price_range, sells, objections, extra_context").eq("org_id", params.orgId).maybeSingle(),
   ]);
 
   if (!leadRes.data) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
@@ -57,6 +60,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const org   = orgRes.data as { name: string; upi_id: string | null } | null;
   const rzp   = rzpRes.data as { config: Record<string, string>; active: boolean } | null;
   const lead  = leadRes.data as { id: string; name: string | null; external_id?: string | null; metadata?: Record<string, unknown> };
+  const vp    = vpRes.data as { tone: string; offer: string; price_range: string; sells: string; objections: string[]; extra_context: string } | null;
   const leadEmail = (lead.metadata?.email) as string | undefined ?? null;
   const firstName = getLeadFirstName({ name: lead.name, external_id: lead.external_id ?? null });
 
@@ -119,11 +123,28 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const p = payment as { id: string };
 
-  // Fire payment.link-message — Inngest handler will generate AI message + insert into thread
-  await inngest.send({
-    name: "payment.link-message",
-    data: { orgId: params.orgId, paymentId: p.id, description },
-  });
+  // ── Insert payment link message into thread synchronously ────────
+  // This guarantees the message appears immediately in the conversation,
+  // independent of Inngest availability. Inngest fires as an async retry.
+  try {
+    const aiResult = await generatePaymentLinkMessage({
+      leadFirstName: firstName,
+      amountInr:     amount_inr,
+      description,
+      paymentUrl:    linkUrl,
+      voiceProfile:  vp,
+      orgId:         params.orgId,
+    });
+    await insertOutboundMessage(conversationId, params.orgId, aiResult.content, "payment_link");
+  } catch (e) {
+    // If synchronous generation fails, Inngest will retry below
+    console.error("[link-generate] sync message insert failed, falling back to Inngest:", e);
+    // Fire Inngest as fallback
+    await inngest.send({
+      name: "payment.link-message",
+      data: { orgId: params.orgId, paymentId: p.id, description },
+    }).catch(() => null);
+  }
 
   // Send email if lead has email (in addition to in-thread message)
   if (leadEmail) {
@@ -145,3 +166,5 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   return NextResponse.json({ payment_id: p.id, link_url: linkUrl, method: linkMethod, conversation_id: conversationId });
 }
+
+export const POST = withErrorHandler("payments/link-generate", handler);
